@@ -29,25 +29,13 @@ void removeActiveNote(uint8_t pitch);
 
 TaskHandle_t soundTaskHandle;
 
-int16_t floatToInt16(float sample) noexcept {
-    // Clip to safe range, scale to int16_t range
-    if (sample > 1.0f) sample = 1.0f;
-    else if (sample < -1.0f) sample = -1.0f;
-    return static_cast<int16_t>(sample * 32767.0f);
-}
-
 void soundTask(void *parameter) {
     const int bufferSize = 64;
     float buffer[bufferSize];
-    int16_t int16Buffer[bufferSize * 2];
     
     for (;;) {
       synth.render(buffer, bufferSize);
-      for (int i = 0; i < bufferSize; i++) {
-        int16Buffer[2 * i] = floatToInt16(buffer[i]);
-        int16Buffer[2 * i + 1] = int16Buffer[2 * i];
-      }
-      sound.write(int16Buffer, bufferSize * 2);
+      sound.write(buffer, bufferSize);
       vTaskDelay(pdMS_TO_TICKS(1));
     }
 }

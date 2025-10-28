@@ -14,7 +14,7 @@ public:
     ~Sound();
     
     void begin();
-    void write(const int16_t* data, size_t size);
+    void write(const float* data, size_t size);
     
     // Configuration
     void setSampleRate(int rate);

@@ -76,11 +76,23 @@ void Sound::setAmplitude(float amplitude) {
     ESP_LOGI(TAG, "Master amplitude set to: %.2f", masterAmplitude);
 }
 
-void Sound::write(const int16_t* data, size_t size) {
+void Sound::write(const float* data, size_t size) {
     if (!tx_handle) return;
     
+    // Apply amplitude scaling and convert float to int16 stereo
+    std::vector<int16_t> scaled_data(size * 2); // Stereo = 2 channels
+    for (size_t i = 0; i < size; i++) {
+        float scaled_sample = data[i] * masterAmplitude;
+        // Clamp to prevent overflow
+        if (scaled_sample > 1.0f) scaled_sample = 1.0f;
+        else if (scaled_sample < -1.0f) scaled_sample = -1.0f;
+        int16_t sample = static_cast<int16_t>(scaled_sample * 32767.0f);
+        scaled_data[2 * i] = sample;     // Left channel
+        scaled_data[2 * i + 1] = sample; // Right channel (same as left)
+    }
+    
     size_t bytes_written;
-    esp_err_t ret = i2s_channel_write(tx_handle, data, size * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+    esp_err_t ret = i2s_channel_write(tx_handle, scaled_data.data(), size * 2 * sizeof(int16_t), &bytes_written, portMAX_DELAY);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "I2S write failed: %s", esp_err_to_name(ret));
     }
