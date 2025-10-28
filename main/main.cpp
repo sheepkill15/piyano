@@ -17,6 +17,8 @@ SynthEngine synth;
 InstrumentManager manager;
 Sound sound;
 
+int currentInstrument = 0;
+
 // MIDI callback functions
 void onMidiNoteOn(uint8_t channel, uint8_t pitch, uint8_t velocity);
 void onMidiNoteOff(uint8_t channel, uint8_t pitch);
@@ -55,7 +57,7 @@ extern "C" void app_main()
     gpio_set_level(GPIO_NUM_4, 1);
 
     sound.begin();
-    synth.init(manager.get(0), 44100);
+    synth.init(manager.get(currentInstrument), 44100);
     
     // Initialize MIDI with custom handler
     midi.onMidiMessage(handleMidiMessage);
@@ -102,10 +104,18 @@ void handleMidiMessage(const uint8_t (&data)[4]) {
         case MidiCin::CONTROL_CHANGE: {
             uint8_t control = data[2];
             uint8_t value = data[3];
-            if(channel == 15 && control == 20) {
-                // volume control
-                float volume = value / 127.0f;
-                sound.setAmplitude(volume);
+            if(channel == 15) {
+                if(control == 20) {
+                    // volume control
+                    float volume = value / 127.0f;
+                    sound.setAmplitude(volume);
+                }
+                if(control == 112 && value == 127) {
+                    // instrument change - next
+                    currentInstrument = (currentInstrument + 1) % manager.getInstrumentCount();
+                    synth.switchInstrument(manager.get(currentInstrument));
+                    ESP_LOGI(TAG, "Instrument changed to: %d", currentInstrument);
+                }
             }
             ESP_LOGI(TAG, "Control Change: ch:%d / cc:%d / v:%d", channel, control, value);
             break;

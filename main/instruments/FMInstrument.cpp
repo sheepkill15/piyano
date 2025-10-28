@@ -9,7 +9,7 @@ void FMInstrument::setSampleRate(float sr) noexcept {
 
 void FMInstrument::noteOn(float frequency, float velocity) noexcept {
     baseFreq_ = frequency;
-    carrierPhase_ = modPhase_ = 0.0f;
+    // Don't reset phases to avoid discontinuities
     amplitude_ = velocity;
     active_ = true;
 }
@@ -29,7 +29,8 @@ void FMInstrument::process(float* out, uint64_t numSamples) noexcept {
         out[i] = s;
         modPhase_ += 2.0f * M_PI * (baseFreq_ * modRatio_) / sampleRate_;
         carrierPhase_ += 2.0f * M_PI * baseFreq_ / sampleRate_;
-        if (modPhase_ > 2.0f*M_PI) modPhase_ -= 2.0f*M_PI;
-        if (carrierPhase_ > 2.0f*M_PI) carrierPhase_ -= 2.0f*M_PI;
+        // Use fmod for better phase wrapping
+        modPhase_ = fmodf(modPhase_, 2.0f * M_PI);
+        carrierPhase_ = fmodf(carrierPhase_, 2.0f * M_PI);
     }
 }

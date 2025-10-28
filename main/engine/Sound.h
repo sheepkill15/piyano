@@ -26,6 +26,9 @@ public:
     // I2S configuration
     i2s_chan_handle_t tx_handle;
     i2s_std_config_t std_cfg;
+    
+    // DC blocking filter
+    float dcFilterState_ = 0.0f;
 };
 
 #endif

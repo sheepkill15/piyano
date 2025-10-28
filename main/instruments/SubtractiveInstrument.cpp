@@ -8,7 +8,7 @@ void SubtractiveInstrument::setSampleRate(float sr) noexcept {
 }
 
 void SubtractiveInstrument::noteOn(float frequency, float velocity) noexcept {
-    phase_ = 0.0f;
+    // Don't reset phase to avoid discontinuities
     freq_ = frequency;
     amplitude_ = velocity;
     active_ = true;
@@ -27,6 +27,7 @@ void SubtractiveInstrument::process(float* out, uint64_t numSamples) noexcept {
         float s = sinf(phase_) * amplitude_;
         out[i] = s;
         phase_ += 2.0f * M_PI * freq_ / sampleRate_;
-        if (phase_ > 2.0f * M_PI) phase_ -= 2.0f * M_PI;
+        // Use fmod for better phase wrapping
+        phase_ = fmodf(phase_, 2.0f * M_PI);
     }
 }

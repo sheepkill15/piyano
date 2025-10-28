@@ -83,6 +83,12 @@ void Sound::write(const float* data, size_t size) {
     std::vector<int16_t> scaled_data(size * 2); // Stereo = 2 channels
     for (size_t i = 0; i < size; i++) {
         float scaled_sample = data[i] * masterAmplitude;
+        
+        // DC blocking filter (simple high-pass)
+        float filtered_sample = scaled_sample - dcFilterState_;
+        dcFilterState_ = scaled_sample * 0.995f + dcFilterState_ * 0.995f;
+        scaled_sample = filtered_sample;
+        
         // Clamp to prevent overflow
         if (scaled_sample > 1.0f) scaled_sample = 1.0f;
         else if (scaled_sample < -1.0f) scaled_sample = -1.0f;

@@ -10,6 +10,7 @@ class InstrumentManager {
         InstrumentManager() noexcept;
     
         IInstrument* get(uint8_t index) noexcept;
+        uint8_t getInstrumentCount() noexcept;
     
     private:
         static constexpr uint8_t MAX_INSTRUMENTS = 2;

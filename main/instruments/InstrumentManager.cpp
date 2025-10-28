@@ -9,3 +9,7 @@ IInstrument* InstrumentManager::get(uint8_t index) noexcept {
     if (index < MAX_INSTRUMENTS) return instruments_[index];
     return nullptr;
 }
+
+uint8_t InstrumentManager::getInstrumentCount() noexcept {
+    return MAX_INSTRUMENTS;
+}
