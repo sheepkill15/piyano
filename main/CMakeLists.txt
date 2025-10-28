@@ -1,0 +1,18 @@
+idf_component_register(
+    SRCS 
+        "main.cpp"
+        "Midi.cpp"
+        "UsbMidi.cpp"
+        "engine/SynthEngine.cpp"
+        "engine/Sound.cpp"
+        "instruments/InstrumentManager.cpp"
+        "instruments/SubtractiveInstrument.cpp"
+        "instruments/FMInstrument.cpp"
+    INCLUDE_DIRS 
+        "."
+        "engine"
+        "instruments"
+    REQUIRES 
+        driver
+        usb
+)
