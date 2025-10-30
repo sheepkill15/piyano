@@ -5,21 +5,18 @@
 
 class FMInstrument : public IInstrument {
     public:
-        void setSampleRate(float sr) noexcept override;
-    
         void noteOn(float frequency, float velocity) noexcept override;
-    
         void noteOff(float frequency) noexcept override;
     
-        void process(float* out, uint64_t numSamples) noexcept override;
-    
     private:
-        float sampleRate_ = 44100.0f;
-        float baseFreq_ = 440.0f;
-        float amplitude_ = 0.0f;
+        void renderAddVoice(uint8_t voiceIndex, float* out, uint64_t numSamples) noexcept override;
+        void onVoiceStart(uint8_t voiceIndex, float frequency, float velocity) noexcept override;
+
+        float baseFreq_[MAX_VOICES] = {};
+        float amplitude_[MAX_VOICES] = {};
         float modIndex_ = 2.0f;
         float modRatio_ = 1.5f;
-        float carrierPhase_ = 0.0f, modPhase_ = 0.0f;
-        bool active_ = false;
+        float carrierPhase_[MAX_VOICES] = {};
+        float modPhase_[MAX_VOICES] = {};
     };
 #endif

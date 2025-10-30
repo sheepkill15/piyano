@@ -3,31 +3,31 @@
 #include <cmath>
 #include <cstring>
 
-void SubtractiveInstrument::setSampleRate(float sr) noexcept {
-    sampleRate_ = sr;
-}
-
 void SubtractiveInstrument::noteOn(float frequency, float velocity) noexcept {
-    // Don't reset phase to avoid discontinuities
-    freq_ = frequency;
-    amplitude_ = velocity;
-    active_ = true;
+    IInstrument::noteOn(frequency, velocity);
 }
 
 void SubtractiveInstrument::noteOff(float frequency) noexcept {
-    active_ = false;
+    IInstrument::noteOff(frequency);
 }
 
-void SubtractiveInstrument::process(float* out, uint64_t numSamples) noexcept {
-    if (!active_) {
-        memset(out, 0, numSamples * sizeof(float));
-        return;
+void SubtractiveInstrument::onVoiceStart(uint8_t voiceIndex, float frequency, float velocity) noexcept {
+    baseFreq_[voiceIndex] = frequency;
+    amplitude_[voiceIndex] = velocity;
+    // keep existing phase for smoothness
+}
+
+void SubtractiveInstrument::renderAddVoice(uint8_t v, float* out, uint64_t numSamples) noexcept {
+    const float sr = getSampleRate();
+    float ph = phase_[v];
+    const float f = baseFreq_[v];
+    const float a = amplitude_[v];
+    const float twoPi = 2.0f * static_cast<float>(M_PI);
+    for (uint64_t i = 0; i < numSamples; ++i) {
+        float s = sinf(ph) * a;
+        out[i] += s;
+        ph += twoPi * f / sr;
+        if (ph >= twoPi) ph = fmodf(ph, twoPi);
     }
-    for (size_t i = 0; i < numSamples; ++i) {
-        float s = sinf(phase_) * amplitude_;
-        out[i] = s;
-        phase_ += 2.0f * M_PI * freq_ / sampleRate_;
-        // Use fmod for better phase wrapping
-        phase_ = fmodf(phase_, 2.0f * M_PI);
-    }
+    phase_[v] = ph;
 }

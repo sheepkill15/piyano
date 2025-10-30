@@ -57,7 +57,7 @@ extern "C" void app_main()
     gpio_set_level(GPIO_NUM_4, 1);
 
     sound.begin();
-    synth.init(manager.get(currentInstrument), 44100);
+    synth.init(manager.get(currentInstrument), static_cast<float>(sound.sampleRate));
     
     // Initialize MIDI with custom handler
     midi.onMidiMessage(handleMidiMessage);
