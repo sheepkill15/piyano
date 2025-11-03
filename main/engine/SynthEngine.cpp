@@ -26,5 +26,5 @@ void SynthEngine::render(float* out, uint64_t nSamples) noexcept {
 }
 
 void SynthEngine::update(float dt) noexcept {
-    // if (instrument) instrument->updateEnvelope(dt);
+    if (instrument) instrument->updateEnvelope(dt);
 }

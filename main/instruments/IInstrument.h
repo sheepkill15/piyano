@@ -66,7 +66,54 @@ class IInstrument {
         void setDecay(float seconds) noexcept { decay_ = seconds; }
         void setSustain(float level) noexcept { sustain_ = level; }
         void setRelease(float seconds) noexcept { release_ = seconds; }
-
+        void updateEnvelope(float dt) noexcept {
+            for (uint8_t i = 0; i < MAX_VOICES; ++i) {
+                EnvState_& env = envelope_[i];
+                env.timeInPhase += dt;
+                
+                switch (env.phase) {
+                    case EnvState::Attack: {
+                        if (attack_ > 0.0f && env.timeInPhase < attack_) {
+                            env.level = env.timeInPhase / attack_;
+                        } else {
+                            env.level = 1.0f;
+                            env.phase = EnvState::Decay;
+                            env.timeInPhase = 0.0f;
+                        }
+                        break;
+                    }
+                    case EnvState::Decay: {
+                        if (decay_ > 0.0f && env.timeInPhase < decay_) {
+                            float t = env.timeInPhase / decay_;
+                            env.level = 1.0f + (sustain_ - 1.0f) * t;
+                        } else {
+                            env.level = sustain_;
+                            env.phase = EnvState::Sustain;
+                            env.timeInPhase = 0.0f;
+                        }
+                        break;
+                    }
+                    case EnvState::Sustain: {
+                        env.level = sustain_;
+                        break;
+                    }
+                    case EnvState::Release: {
+                        if (release_ > 0.0f && env.timeInPhase < release_) {
+                            float t = env.timeInPhase / release_;
+                            env.level = env.releaseStartLevel * (1.0f - t);
+                        } else {
+                            env.level = 0.0f;
+                            env.phase = EnvState::Idle;
+                        }
+                        break;
+                    }
+                    case EnvState::Idle: {
+                        env.level = 0.0f;
+                        break;
+                    }
+                }
+            }
+        }
     protected:
         static constexpr uint8_t MAX_VOICES = 8;
 
@@ -91,54 +138,7 @@ class IInstrument {
         inline const VoiceState* getVoices() const noexcept { return voices_; }
         inline VoiceState* getMutableVoices() noexcept { return voices_; }
         
-        float updateEnvelope(uint8_t v, float dt) noexcept {
-            EnvState_& env = envelope_[v];
-            env.timeInPhase += dt;
-            
-            switch (env.phase) {
-                case EnvState::Attack: {
-                    if (attack_ > 0.0f && env.timeInPhase < attack_) {
-                        env.level = env.timeInPhase / attack_;
-                    } else {
-                        env.level = 1.0f;
-                        env.phase = EnvState::Decay;
-                        env.timeInPhase = 0.0f;
-                    }
-                    break;
-                }
-                case EnvState::Decay: {
-                    if (decay_ > 0.0f && env.timeInPhase < decay_) {
-                        float t = env.timeInPhase / decay_;
-                        env.level = 1.0f + (sustain_ - 1.0f) * t;
-                    } else {
-                        env.level = sustain_;
-                        env.phase = EnvState::Sustain;
-                        env.timeInPhase = 0.0f;
-                    }
-                    break;
-                }
-                case EnvState::Sustain: {
-                    env.level = sustain_;
-                    break;
-                }
-                case EnvState::Release: {
-                    if (release_ > 0.0f && env.timeInPhase < release_) {
-                        float t = env.timeInPhase / release_;
-                        env.level = env.releaseStartLevel * (1.0f - t);
-                    } else {
-                        env.level = 0.0f;
-                        env.phase = EnvState::Idle;
-                    }
-                    break;
-                }
-                case EnvState::Idle: {
-                    env.level = 0.0f;
-                    break;
-                }
-            }
-            
-            return env.level;
-        }
+        
         
         inline const EnvState_* getEnvelope(uint8_t v) const noexcept { return &envelope_[v]; }
 

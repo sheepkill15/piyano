@@ -73,8 +73,14 @@ extern "C" void app_main()
     ESP_LOGI(TAG, "System ready!");
 
     // Main loop
+    int64_t lastUpdate = 0;
     while (1) {
         midi.update();
+        struct timeval tv_now;
+        gettimeofday(&tv_now, NULL);
+        int64_t time_us = (int64_t)tv_now.tv_sec * 1000000L + (int64_t)tv_now.tv_usec;
+        synth.update((time_us - lastUpdate) / 1000000.0f);
+        lastUpdate = time_us;
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 }

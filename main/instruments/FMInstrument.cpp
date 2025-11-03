@@ -10,7 +10,6 @@ void FMInstrument::onVoiceStart(uint8_t voiceIndex, float frequency, float veloc
 
 void FMInstrument::renderAddVoice(uint8_t v, float* out, uint64_t numSamples) noexcept {
     const float sr = getSampleRate();
-    const float dt = 1.0f / sr;
     float cph = carrierPhase_[v];
     float mph = modPhase_[v];
     const float f = baseFreq_[v];
@@ -18,7 +17,7 @@ void FMInstrument::renderAddVoice(uint8_t v, float* out, uint64_t numSamples) no
     const float twoPi = 2.0f * static_cast<float>(M_PI);
     
     for (uint64_t i = 0; i < numSamples; ++i) {
-        float envLevel = updateEnvelope(v, dt);
+        float envLevel = getEnvelope(v)->level;
         float mod = sinf(mph) * modIndex_;
         float s = sinf(cph + mod) * a * envLevel;
         out[i] += s;
