@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <cmath>
 
 // Abstract base with shared voice handling and sample-rate storage
 class IInstrument {
@@ -37,11 +38,13 @@ class IInstrument {
                 any = true;
                 renderAddVoice(i, outBuffer, numSamples);
             }
-            if (!any) {
-                // already zeroed
-                return;
+            if (!any) return; // already zeroed
+            // Apply soft clipping to all voices
+            for (uint64_t i = 0; i < numSamples; ++i) {
+                outBuffer[i] = softClip(outBuffer[i]);
             }
         }
+        inline float softClip(float x) noexcept { const float limit = 0.95f; return tanhf(x / limit) * limit; }
 
         // Store sample rate centrally
         virtual void setSampleRate(float sr) noexcept { sampleRate_ = sr; }
