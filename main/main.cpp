@@ -32,8 +32,8 @@ void removeActiveNote(uint8_t pitch);
 TaskHandle_t soundTaskHandle;
 
 void soundTask(void *parameter) {
-    const int bufferSize = 256;
-    float buffer[bufferSize];
+    const int bufferSize = 1024;
+    static float buffer[bufferSize];
     
     for (;;) {
       synth.render(buffer, bufferSize);
