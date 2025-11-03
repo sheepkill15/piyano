@@ -155,7 +155,10 @@ void handleMidiMessage(const uint8_t (&data)[4]) {
 void onMidiNoteOn(uint8_t channel, uint8_t pitch, uint8_t velocity) {
     float frequency = midiNoteToFrequency(pitch);
     float amplitude = velocity / 127.0f;
-    
+    if(velocity == 0) {
+        synth.noteOff(frequency);
+        return;
+    }
     synth.noteOn(frequency, amplitude);
 }
 
