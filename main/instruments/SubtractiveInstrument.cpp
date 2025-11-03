@@ -19,12 +19,14 @@ void SubtractiveInstrument::onVoiceStart(uint8_t voiceIndex, float frequency, fl
 
 void SubtractiveInstrument::renderAddVoice(uint8_t v, float* out, uint64_t numSamples) noexcept {
     const float sr = getSampleRate();
+    const float dt = 1.0f / sr;
     float ph = phase_[v];
     const float f = baseFreq_[v];
     const float a = amplitude_[v];
     const float twoPi = 2.0f * static_cast<float>(M_PI);
     for (uint64_t i = 0; i < numSamples; ++i) {
-        float s = sinf(ph) * a;
+        float envLevel = updateEnvelope(v, dt);
+        float s = sinf(ph) * a * envLevel;
         out[i] += s;
         ph += twoPi * f / sr;
         if (ph >= twoPi) ph = fmodf(ph, twoPi);

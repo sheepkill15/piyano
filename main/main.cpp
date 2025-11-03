@@ -32,13 +32,12 @@ void removeActiveNote(uint8_t pitch);
 TaskHandle_t soundTaskHandle;
 
 void soundTask(void *parameter) {
-    const int bufferSize = 64;
+    const int bufferSize = 256;
     float buffer[bufferSize];
     
     for (;;) {
       synth.render(buffer, bufferSize);
       sound.write(buffer, bufferSize);
-      vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -115,6 +114,22 @@ void handleMidiMessage(const uint8_t (&data)[4]) {
                     currentInstrument = (currentInstrument + 1) % manager.getInstrumentCount();
                     synth.switchInstrument(manager.get(currentInstrument));
                     ESP_LOGI(TAG, "Instrument changed to: %d", currentInstrument);
+                }
+                if(control == 12) { // attack
+                    float attack = value / 127.0f;
+                    ((FMInstrument*)manager.get(currentInstrument))->setAttack(attack);
+                }
+                if(control == 13) { // decay
+                    float decay = value / 127.0f;
+                    ((FMInstrument*)manager.get(currentInstrument))->setDecay(decay);
+                }
+                if(control == 14) { // sustain
+                    float sustain = value / 127.0f;
+                    ((FMInstrument*)manager.get(currentInstrument))->setSustain(sustain);
+                }
+                if(control == 15) { // release
+                    float release = value / 127.0f;
+                    ((FMInstrument*)manager.get(currentInstrument))->setRelease(release);
                 }
             }
             ESP_LOGI(TAG, "Control Change: ch:%d / cc:%d / v:%d", channel, control, value);

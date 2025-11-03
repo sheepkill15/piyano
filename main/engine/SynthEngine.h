@@ -15,6 +15,8 @@ class SynthEngine {
         void noteOff(float frequency) noexcept;
     
         void render(float* out, uint64_t nSamples) noexcept;
+
+        void update(float dt) noexcept;
     
     private:
         IInstrument* instrument = nullptr;

@@ -24,3 +24,7 @@ void SynthEngine::render(float* out, uint64_t nSamples) noexcept {
     if (instrument) instrument->process(out, nSamples);
     else memset(out, 0, nSamples * sizeof(float));
 }
+
+void SynthEngine::update(float dt) noexcept {
+    // if (instrument) instrument->updateEnvelope(dt);
+}
