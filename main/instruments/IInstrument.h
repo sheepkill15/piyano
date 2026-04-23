@@ -61,6 +61,16 @@ class IInstrument {
         // Store sample rate centrally
         virtual void setSampleRate(float sr) noexcept { sampleRate_ = sr; }
 
+        virtual bool setParam(uint16_t paramId, float value) noexcept {
+            switch (paramId) {
+                case 1: setAttack(value); return true;
+                case 2: setDecay(value); return true;
+                case 3: setSustain(value); return true;
+                case 4: setRelease(value); return true;
+                default: return false;
+            }
+        }
+
         // ADSR envelope controls
         void setAttack(float seconds) noexcept { attack_ = seconds; }
         void setDecay(float seconds) noexcept { decay_ = seconds; }

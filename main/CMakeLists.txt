@@ -8,10 +8,12 @@ idf_component_register(
         "instruments/InstrumentManager.cpp"
         "instruments/SubtractiveInstrument.cpp"
         "instruments/FMInstrument.cpp"
+        "workstation/Workstation.cpp"
     INCLUDE_DIRS 
         "."
         "engine"
         "instruments"
+        "workstation"
     REQUIRES 
         driver
         usb

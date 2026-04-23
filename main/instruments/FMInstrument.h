@@ -7,6 +7,7 @@ class FMInstrument : public IInstrument {
     public:
         void renderAddVoice(uint8_t voiceIndex, float* out, uint64_t numSamples) noexcept override;
         void onVoiceStart(uint8_t voiceIndex, float frequency, float velocity) noexcept override;
+        bool setParam(uint16_t paramId, float value) noexcept override;
 
     private:
         float baseFreq_[MAX_VOICES] = {};
