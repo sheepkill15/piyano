@@ -13,10 +13,10 @@ static const char *TAG = "PIYANO";
 
 // Global instances
 Midi midi;
-SynthEngine synth;
+SynthEngine synthEngine;
 InstrumentManager manager;
 Sound sound;
-Workstation workstation(synth, manager, sound);
+Workstation workstation(synthEngine, manager, sound);
 
 // MIDI callback functions
 void onMidiNoteOn(uint8_t channel, uint8_t pitch, uint8_t velocity);
@@ -27,11 +27,16 @@ TaskHandle_t soundTaskHandle;
 
 void soundTask(void *parameter) {
     const int bufferSize = 1024;
-    static float buffer[bufferSize];
+    static float mono[bufferSize];
+    static float stereo[bufferSize * 2];
     
     for (;;) {
-      synth.render(buffer, bufferSize);
-      sound.write(buffer, bufferSize);
+      synthEngine.render(mono, bufferSize);
+      for (int i = 0; i < bufferSize; ++i) {
+          stereo[2 * i] = mono[i];
+          stereo[2 * i + 1] = mono[i];
+      }
+      sound.writeStereoInterleaved(stereo, bufferSize);
     }
 }
 
@@ -50,7 +55,7 @@ extern "C" void app_main()
     gpio_set_level(GPIO_NUM_4, 1);
 
     sound.begin();
-    synth.init(manager.get(0), static_cast<float>(sound.sampleRate));
+    synthEngine.init(manager.select(0), static_cast<float>(sound.sampleRate));
     workstation.begin();
     
     // Initialize MIDI with custom handler
@@ -74,7 +79,7 @@ extern "C" void app_main()
         struct timeval tv_now;
         gettimeofday(&tv_now, NULL);
         int64_t time_us = (int64_t)tv_now.tv_sec * 1000000L + (int64_t)tv_now.tv_usec;
-        synth.update((time_us - lastUpdate) / 1000000.0f);
+        synthEngine.update((time_us - lastUpdate) / 1000000.0f);
         lastUpdate = time_us;
         vTaskDelay(pdMS_TO_TICKS(1));
     }
@@ -123,12 +128,12 @@ void handleMidiMessage(const uint8_t (&data)[4]) {
 void onMidiNoteOn(uint8_t channel, uint8_t pitch, uint8_t velocity) {
     float amplitude = velocity / 127.0f;
     if(velocity == 0) {
-        synth.noteOff(pitch);
+        synthEngine.noteOff(pitch);
         return;
     }
-    synth.noteOn(pitch, amplitude);
+    synthEngine.noteOn(pitch, amplitude);
 }
 
 void onMidiNoteOff(uint8_t channel, uint8_t pitch) {
-    synth.noteOff(pitch);
+    synthEngine.noteOff(pitch);
 }

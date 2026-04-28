@@ -3,6 +3,8 @@
 #include <cstdint>
 
 namespace Params {
+    static constexpr uint16_t MasterGain = 10; // global mixer gain (0..1 typical)
+
     static constexpr uint16_t Attack = 1;
     static constexpr uint16_t Decay = 2;
     static constexpr uint16_t Sustain = 3;

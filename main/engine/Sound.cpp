@@ -76,13 +76,26 @@ void Sound::setAmplitude(float amplitude) {
     ESP_LOGI(TAG, "Master amplitude set to: %.2f", masterAmplitude);
 }
 
-void Sound::write(const float* data, size_t size) {
+void Sound::write(const float* mono, size_t frames) {
+    if (!tx_handle) return;
+
+    // Duplicate mono -> interleaved stereo
+    std::vector<float> stereo(static_cast<size_t>(frames) * 2);
+    for (size_t i = 0; i < frames; ++i) {
+        stereo[2 * i] = mono[i];
+        stereo[2 * i + 1] = mono[i];
+    }
+    writeStereoInterleaved(stereo.data(), frames);
+}
+
+void Sound::writeStereoInterleaved(const float* stereoLR, size_t frames) {
     if (!tx_handle) return;
     
-    // Apply amplitude scaling and convert float to int16 stereo
-    std::vector<int16_t> scaled_data(size * 2); // Stereo = 2 channels
-    for (size_t i = 0; i < size; i++) {
-        float scaled_sample = data[i] * masterAmplitude;
+    // Apply amplitude scaling and convert float to int16 stereo (interleaved)
+    std::vector<int16_t> scaled_data(static_cast<size_t>(frames) * 2); // Stereo = 2 channels
+    for (size_t i = 0; i < frames; i++) {
+        float l = stereoLR[2 * i] * masterAmplitude;
+        float r = stereoLR[2 * i + 1] * masterAmplitude;
         
         // DC blocking filter (simple high-pass)
         // float filtered_sample = scaled_sample - dcFilterState_;
@@ -90,15 +103,17 @@ void Sound::write(const float* data, size_t size) {
         // scaled_sample = filtered_sample;
         
         // Clamp to prevent overflow
-        if (scaled_sample > 1.0f) scaled_sample = 1.0f;
-        else if (scaled_sample < -1.0f) scaled_sample = -1.0f;
-        int16_t sample = static_cast<int16_t>(scaled_sample * 32767.0f);
-        scaled_data[2 * i] = sample;     // Left channel
-        scaled_data[2 * i + 1] = sample; // Right channel (same as left)
+        if (l > 1.0f) l = 1.0f;
+        else if (l < -1.0f) l = -1.0f;
+        if (r > 1.0f) r = 1.0f;
+        else if (r < -1.0f) r = -1.0f;
+
+        scaled_data[2 * i] = static_cast<int16_t>(l * 32767.0f);
+        scaled_data[2 * i + 1] = static_cast<int16_t>(r * 32767.0f);
     }
     
     size_t bytes_written;
-    esp_err_t ret = i2s_channel_write(tx_handle, scaled_data.data(), size * 2 * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+    esp_err_t ret = i2s_channel_write(tx_handle, scaled_data.data(), frames * 2 * sizeof(int16_t), &bytes_written, portMAX_DELAY);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "I2S write failed: %s", esp_err_to_name(ret));
     }

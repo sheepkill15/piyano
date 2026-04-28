@@ -14,7 +14,10 @@ public:
     ~Sound();
     
     void begin();
-    void write(const float* data, size_t size);
+    // Mono frames -> duplicated to L/R
+    void write(const float* mono, size_t frames);
+    // Interleaved stereo frames: LRLRLR...
+    void writeStereoInterleaved(const float* stereoLR, size_t frames);
     
     // Configuration
     void setSampleRate(int rate);

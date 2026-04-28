@@ -3,6 +3,9 @@
 
 #include <cstdint>
 #include "IInstrument.h"
+#include "synth/voice/VoiceAllocator.h"
+#include "synth/modules/Adsr.h"
+#include "synth/mix/GlobalMixer.h"
 
 class SynthEngine {
     public:
@@ -13,6 +16,8 @@ class SynthEngine {
         void noteOn(uint8_t note, float vel) noexcept;
     
         void noteOff(uint8_t note) noexcept;
+
+        bool setParam(uint16_t paramId, float value) noexcept;
     
         void render(float* out, uint64_t nSamples) noexcept;
 
@@ -21,5 +26,11 @@ class SynthEngine {
     private:
         IInstrument* instrument = nullptr;
         float sampleRate;
+
+        static constexpr uint8_t MAX_VOICES = 8;
+        synth::voice::VoiceAllocator<MAX_VOICES> allocator_ = {};
+        synth::modules::Adsr ampEnv_[MAX_VOICES] = {};
+        synth::voice::SameNoteMode sameNoteMode_ = synth::voice::SameNoteMode::SingleVoicePerKey;
+        synth::mix::GlobalMixer mixer_ = {};
     };
 #endif
