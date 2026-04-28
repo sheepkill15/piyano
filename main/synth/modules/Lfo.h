@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <cmath>
 
+#include "synth/dsp/WaveTables.h"
+
 namespace synth::modules {
 
 enum class LfoWave : uint8_t { Sine, Triangle, Square, SampleHold };
@@ -25,9 +27,8 @@ struct Lfo {
 
         const bool wrapped = phase < prev;
         switch (wave) {
-            case LfoWave::Sine: {
-                return sinf(2.0f * static_cast<float>(M_PI) * phase);
-            }
+            case LfoWave::Sine:
+                return synth::dsp::sineLU(phase);
             case LfoWave::Triangle: {
                 const float s = 2.0f * phase - 1.0f;
                 return 2.0f * (fabsf(s) - 0.5f);
@@ -51,4 +52,3 @@ struct Lfo {
 };
 
 } // namespace synth::modules
-

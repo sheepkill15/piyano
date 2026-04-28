@@ -6,6 +6,7 @@
 #include "instruments/InstrumentManager.h"
 #include "engine/SynthEngine.h"
 #include "engine/Sound.h"
+#include "synth/dsp/WaveTables.h"
 #include "workstation/Workstation.h"
 #include <cmath>
 
@@ -49,6 +50,7 @@ extern "C" void app_main()
     gpio_config(&io_conf);
     gpio_set_level(GPIO_NUM_4, 1);
 
+    synth::dsp::initWaveTables();
     sound.begin();
     synthEngine.init(manager.select(0), static_cast<float>(sound.sampleRate));
     workstation.begin();

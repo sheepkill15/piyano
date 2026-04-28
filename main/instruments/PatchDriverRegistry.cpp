@@ -4,6 +4,8 @@
 #include "PatchDriver.h"
 #include "workstation/Params.h"
 
+#include "synth/dsp/Approx.h"
+#include "synth/dsp/WaveTables.h"
 #include "synth/modules/Adsr.h"
 #include "synth/modules/DrumVoices.h"
 #include "synth/modules/Exciter.h"
@@ -22,22 +24,13 @@ namespace {
 
 constexpr float kTwoPi = 6.28318530717958647692f;
 constexpr std::size_t kPianoBufSamples = 4096; // ~93 ms at 44.1k - enough down to ~11 Hz
+static_assert((kPianoBufSamples & (kPianoBufSamples - 1)) == 0,
+              "kPianoBufSamples must be a power of two for bitmask wrap");
+constexpr std::size_t kPianoBufMask = kPianoBufSamples - 1;
 constexpr uint8_t kMaxVoicesCap = 8;
 
 inline float clampf(float x, float lo, float hi) noexcept {
     return x < lo ? lo : (x > hi ? hi : x);
-}
-
-inline float polyBlep(float t, float dt) noexcept {
-    if (t < dt) {
-        t /= dt;
-        return t + t - t * t - 1.0f;
-    }
-    if (t > 1.0f - dt) {
-        t = (t - 1.0f) / dt;
-        return t * t + t + t + 1.0f;
-    }
-    return 0.0f;
 }
 
 // =========================================================================
@@ -49,6 +42,8 @@ struct SubVoiceState {
     float ph1 = 0.0f;
     float ph2 = 0.0f;
     float subPh = 0.0f;
+    int sawTbl1 = 0;
+    int sawTbl2 = 0;
     synth::modules::Svf filter{};
     synth::modules::Adsr filtEnv{};
 };
@@ -78,6 +73,10 @@ struct SubtractiveDriver final : public PatchDriver {
         s->ph1 = 0.0f;
         s->ph2 = 0.5f;
         s->subPh = 0.0f;
+        const float f1 = ctx.frequency;
+        const float f2 = ctx.frequency * synth::dsp::exp2Fast(I->detuneCents * (1.0f / 1200.0f));
+        s->sawTbl1 = synth::dsp::sawTableIdx(f1);
+        s->sawTbl2 = synth::dsp::sawTableIdx(f2);
         s->filter = synth::modules::Svf{};
         s->filter.mode = synth::modules::SvfMode::LowPass;
         s->filter.set(I->cutoffBase + (I->cutoffPeak - I->cutoffBase) * (0.5f + 0.5f * ctx.velocity), I->resonance, sr);
@@ -94,12 +93,16 @@ struct SubtractiveDriver final : public PatchDriver {
         auto* s = static_cast<SubVoiceState*>(voice);
         auto* I = static_cast<SubInstrumentState*>(inst);
         const float dtSr = 1.0f / sr;
+        const float invSr = 1.0f / sr;
         const float f1 = s->freq;
-        const float f2 = s->freq * powf(2.0f, I->detuneCents / 1200.0f);
+        const float f2 = s->freq * synth::dsp::exp2Fast(I->detuneCents * (1.0f / 1200.0f));
         const float fSub = s->freq * 0.5f;
-        const float dp1 = f1 / sr;
-        const float dp2 = f2 / sr;
-        const float dpSub = fSub / sr;
+        const float dp1 = f1 * invSr;
+        const float dp2 = f2 * invSr;
+        const float dpSub = fSub * invSr;
+        const int t1 = s->sawTbl1;
+        const int t2 = s->sawTbl2;
+        const float drive = I->drive;
 
         for (uint64_t i = 0; i < n; ++i) {
             s->filtEnv.tick(dtSr);
@@ -113,13 +116,13 @@ struct SubtractiveDriver final : public PatchDriver {
             s->ph2 += dp2; if (s->ph2 >= 1.0f) s->ph2 -= 1.0f;
             s->subPh += dpSub; if (s->subPh >= 1.0f) s->subPh -= 1.0f;
 
-            float saw1 = (2.0f * s->ph1 - 1.0f) - polyBlep(s->ph1, dp1);
-            float saw2 = (2.0f * s->ph2 - 1.0f) - polyBlep(s->ph2, dp2);
-            const float sub = sinf(kTwoPi * s->subPh);
+            const float saw1 = synth::dsp::sawLU(t1, s->ph1);
+            const float saw2 = synth::dsp::sawLU(t2, s->ph2);
+            const float sub  = synth::dsp::sineLU(s->subPh);
 
             float sig = (saw1 + saw2) * 0.35f + sub * 0.25f;
             sig = s->filter.tick(sig);
-            sig = tanhf(sig * I->drive);
+            sig = synth::dsp::tanhFast(sig * drive);
             out[i] += sig * 0.7f;
         }
     }
@@ -176,22 +179,32 @@ struct FmFamilyDriver final : public PatchDriver {
                         const PatchConfig& cfg) const noexcept override {
         auto* s = static_cast<FmVoiceState*>(voice);
         const float dtSr = 1.0f / sr;
-        const float dpC = s->freq / sr;
-        const float dpM = s->freq * cfg.fmModRatio / sr;
+        const float invSr = 1.0f / sr;
+        const float dpC = s->freq * invSr;
+        const float dpM = s->freq * cfg.fmModRatio * invSr;
 
         const float velMix = indexVelAmount_;
         const float velScale = (1.0f - velMix) + velMix * (0.25f + 0.75f * s->vel);
         const float baseIndex = cfg.fmModIndex * velScale;
 
+        // Run the modulation in normalized phase units (so we can use the cheap
+        // sineLU on a wrapped phase). The carrier sees an offset in phase units
+        // computed from the modulator output.
+        const float fbScale = feedback_ * (1.0f / kTwoPi); // feedback_ is in radians; convert to phase units
+        const float idxPhScale = 1.0f / kTwoPi;            // mod->carrier index in phase units
+
         for (uint64_t i = 0; i < n; ++i) {
             s->modEnv.tick(dtSr);
             const float idx = baseIndex * s->modEnv.level;
 
-            // Modulator with feedback
-            const float modIn = sinf(kTwoPi * s->modPh + s->modFb * feedback_);
-            s->modFb = modIn;
+            float modPhWrapped = s->modPh + s->modFb * fbScale;
+            modPhWrapped -= floorf(modPhWrapped);
+            const float modOut = synth::dsp::sineLU(modPhWrapped);
+            s->modFb = modOut;
 
-            const float carIn = sinf(kTwoPi * s->carPh + modIn * idx);
+            float carPhMod = s->carPh + modOut * idx * idxPhScale;
+            carPhMod -= floorf(carPhMod);
+            const float carIn = synth::dsp::sineLU(carPhMod);
 
             s->carPh += dpC; if (s->carPh >= 1.0f) s->carPh -= 1.0f;
             s->modPh += dpM; if (s->modPh >= 1.0f) s->modPh -= 1.0f;
@@ -282,7 +295,6 @@ struct PianoDriver final : public PatchDriver {
         st->vel = ctx.velocity;
         st->ph1 = 0.0f; st->ph2 = 0.0f; st->ph3 = 0.0f;
 
-        // Hammer click ~3-5 ms; noise burst ~30 ms.
         st->click.trigger(0.55f + 0.65f * ctx.velocity, 0.92f);
         st->noise.trigger(0.20f + 0.40f * ctx.velocity, 0.998f);
 
@@ -294,10 +306,9 @@ struct PianoDriver final : public PatchDriver {
         st->body.lp = 0.0f;
         st->body.delay = delay;
 
-        // Karplus-Strong: keep feedback near 1; damp varies with pitch to control timbre/decay.
         const float keyT = clampf((ctx.note - 21) / 88.0f, 0.0f, 1.0f); // 0=A0..1=C8
         st->body.feedback = 0.9985f;
-        st->body.damp     = 0.30f + 0.45f * keyT; // higher notes less LP-smoothed (decays via feedback faster)
+        st->body.damp     = 0.30f + 0.45f * keyT;
 
         st->bodyHP = synth::modules::Svf{};
         st->bodyHP.mode = synth::modules::SvfMode::HighPass;
@@ -321,38 +332,64 @@ struct PianoDriver final : public PatchDriver {
         float* buf = pinst ? pinst->voiceBuf(v) : nullptr;
         const float f = st->freq;
         const float a = 0.20f + 0.55f * st->vel;
-        const float dp1 = f / sr;
-        const float dp2 = (f * 2.0f) / sr;
-        const float dp3 = (f * 3.01f) / sr; // slight inharmonicity tone
+        const float invSr = 1.0f / sr;
+        const float dp1 = f * invSr;
+        const float dp2 = (f * 2.0f) * invSr;
+        const float dp3 = (f * 3.01f) * invSr; // slight inharmonicity tone
+        const float harm2 = 0.20f;
+        const float harm3 = 0.06f;
         PianoBodyState& bdy = st->body;
-        for (uint64_t i = 0; i < n; ++i) {
-            const float exc = st->click.tick() + st->noise.tick();
 
-            float body = 0.0f;
-            if (buf) {
-                const std::size_t read = (bdy.idx + kPianoBufSamples - bdy.delay) % kPianoBufSamples;
-                body = buf[read];
-                bdy.lp += (body - bdy.lp) * bdy.damp;
-                buf[bdy.idx] = exc + bdy.lp * bdy.feedback;
-                bdy.idx = (bdy.idx + 1) % kPianoBufSamples;
+        if (buf) {
+            std::size_t bdyIdx = bdy.idx;
+            const std::size_t bdyDelay = bdy.delay;
+            const float bdyFb = bdy.feedback;
+            const float bdyDamp = bdy.damp;
+            float bdyLp = bdy.lp;
+
+            for (uint64_t i = 0; i < n; ++i) {
+                const float exc = st->click.tick() + st->noise.tick();
+
+                const std::size_t read = (bdyIdx + kPianoBufSamples - bdyDelay) & kPianoBufMask;
+                const float body = buf[read];
+                bdyLp += (body - bdyLp) * bdyDamp;
+                buf[bdyIdx] = exc + bdyLp * bdyFb;
+                bdyIdx = (bdyIdx + 1) & kPianoBufMask;
+
+                st->ph1 += dp1; if (st->ph1 >= 1.0f) st->ph1 -= 1.0f;
+                st->ph2 += dp2; if (st->ph2 >= 1.0f) st->ph2 -= 1.0f;
+                st->ph3 += dp3; if (st->ph3 >= 1.0f) st->ph3 -= 1.0f;
+                const float harm = synth::dsp::sineLU(st->ph1) * 0.55f
+                                 + synth::dsp::sineLU(st->ph2) * harm2
+                                 + synth::dsp::sineLU(st->ph3) * harm3;
+
+                float mix = body * 0.85f + harm * 0.15f * a;
+                mix = st->bodyHP.tick(mix);
+                mix = st->outLP.tick(mix);
+                out[i] += mix;
             }
 
-            st->ph1 += dp1; if (st->ph1 >= 1.0f) st->ph1 -= 1.0f;
-            st->ph2 += dp2; if (st->ph2 >= 1.0f) st->ph2 -= 1.0f;
-            st->ph3 += dp3; if (st->ph3 >= 1.0f) st->ph3 -= 1.0f;
-            const float harm = sinf(kTwoPi * st->ph1) * 0.55f
-                             + sinf(kTwoPi * st->ph2) * 0.20f
-                             + sinf(kTwoPi * st->ph3) * 0.06f;
-
-            float mix = body * 0.85f + harm * 0.15f * a;
-            mix = st->bodyHP.tick(mix);
-            mix = st->outLP.tick(mix);
-            out[i] += mix;
+            bdy.idx = bdyIdx;
+            bdy.lp = bdyLp;
+        } else {
+            for (uint64_t i = 0; i < n; ++i) {
+                (void)st->click.tick();
+                (void)st->noise.tick();
+                st->ph1 += dp1; if (st->ph1 >= 1.0f) st->ph1 -= 1.0f;
+                st->ph2 += dp2; if (st->ph2 >= 1.0f) st->ph2 -= 1.0f;
+                st->ph3 += dp3; if (st->ph3 >= 1.0f) st->ph3 -= 1.0f;
+                const float harm = synth::dsp::sineLU(st->ph1) * 0.55f
+                                 + synth::dsp::sineLU(st->ph2) * harm2
+                                 + synth::dsp::sineLU(st->ph3) * harm3;
+                float mix = harm * 0.15f * a;
+                mix = st->bodyHP.tick(mix);
+                mix = st->outLP.tick(mix);
+                out[i] += mix;
+            }
         }
     }
 
     float voicePan(const void* /*voice*/, uint8_t v) const noexcept override {
-        // Tiny per-voice spread, like multi-mic stereo image.
         constexpr float spread = 0.18f;
         return ((static_cast<int>(v) & 1) ? -spread : spread) * 0.5f;
     }
@@ -366,6 +403,7 @@ struct StringsVoiceState {
     float vel = 0.0f;
     float ph1 = 0.0f;
     float ph2 = 0.0f;
+    int sawTbl = 0;
     synth::modules::Svf filter{};
     synth::modules::Lfo vibLfo{};
     synth::modules::Lfo cutLfo{};
@@ -383,6 +421,8 @@ struct StringsDriver final : public PatchDriver {
         s->vel = ctx.velocity;
         s->ph1 = 0.0f;
         s->ph2 = 0.5f;
+        // Pick the saw mipmap based on detuned upper voice so we never alias.
+        s->sawTbl = synth::dsp::sawTableIdx(ctx.frequency * 1.0058f);
         s->filter = synth::modules::Svf{};
         s->filter.mode = synth::modules::SvfMode::LowPass;
         s->filter.set(1500.0f + ctx.velocity * 3500.0f, 0.18f, sr);
@@ -397,7 +437,6 @@ struct StringsDriver final : public PatchDriver {
         s->cutLfo.rateHz = 0.35f + 0.07f * vi;
         s->cutLfo.phase = static_cast<float>(vi) * 0.211f;
 
-        // Soft per-voice pan spread for ensemble width.
         const float t = (vi & 7) / 7.0f - 0.5f; // -0.5..+0.5
         s->pan = t * 1.2f;
         if (s->pan < -0.6f) s->pan = -0.6f;
@@ -407,24 +446,26 @@ struct StringsDriver final : public PatchDriver {
     void voiceRenderAdd(void* /*inst*/, void* voice, uint8_t /*vi*/, float* out, uint64_t n, float sr,
                         const PatchConfig& /*cfg*/) const noexcept override {
         auto* s = static_cast<StringsVoiceState*>(voice);
-        float dp1 = s->freq / sr;
-        float dp2 = s->freq * 1.0058f / sr;
+        const float invSr = 1.0f / sr;
+        float dp1 = s->freq * invSr;
+        float dp2 = s->freq * 1.0058f * invSr;
+        const int tbl = s->sawTbl;
         for (uint64_t i = 0; i < n; ++i) {
             const float vib = s->vibLfo.tick();
             const float cutMod = s->cutLfo.tick();
 
             if ((i & 15) == 0) {
-                const float fMod = s->freq * powf(2.0f, vib * 0.0035f);
-                dp1 = fMod / sr;
-                dp2 = fMod * 1.0058f / sr;
+                const float fMod = s->freq * synth::dsp::exp2Fast(vib * 0.0035f);
+                dp1 = fMod * invSr;
+                dp2 = fMod * 1.0058f * invSr;
                 const float cutoff = 1400.0f + 1100.0f * cutMod + 2200.0f * s->vel;
                 s->filter.set(cutoff < 200.0f ? 200.0f : cutoff, 0.20f, sr);
             }
 
             s->ph1 += dp1; if (s->ph1 >= 1.0f) s->ph1 -= 1.0f;
             s->ph2 += dp2; if (s->ph2 >= 1.0f) s->ph2 -= 1.0f;
-            const float saw1 = (2.0f * s->ph1 - 1.0f) - polyBlep(s->ph1, dp1);
-            const float saw2 = (2.0f * s->ph2 - 1.0f) - polyBlep(s->ph2, dp2);
+            const float saw1 = synth::dsp::sawLU(tbl, s->ph1);
+            const float saw2 = synth::dsp::sawLU(tbl, s->ph2);
 
             float sig = (saw1 + saw2) * 0.40f;
             sig = s->filter.tick(sig);
@@ -445,6 +486,7 @@ struct BassVoiceState {
     float vel = 0.0f;
     float ph1 = 0.0f;
     float subPh = 0.0f;
+    int sawTbl = 0;
     synth::modules::Svf filter{};
     synth::modules::Adsr filtEnv{};
 };
@@ -470,6 +512,7 @@ struct BassDriver final : public PatchDriver {
         s->vel = ctx.velocity;
         s->ph1 = 0.0f;
         s->subPh = 0.0f;
+        s->sawTbl = synth::dsp::sawTableIdx(ctx.frequency);
         s->filter = synth::modules::Svf{};
         s->filter.mode = synth::modules::SvfMode::LowPass;
         s->filter.set(180.0f, 0.45f, sr);
@@ -486,23 +529,28 @@ struct BassDriver final : public PatchDriver {
         auto* s = static_cast<BassVoiceState*>(voice);
         auto* B = static_cast<BassInstrumentState*>(inst);
         const float dtSr = 1.0f / sr;
-        const float dp = s->freq / sr;
-        const float dpSub = (s->freq * 0.5f) / sr;
+        const float invSr = 1.0f / sr;
+        const float dp = s->freq * invSr;
+        const float dpSub = (s->freq * 0.5f) * invSr;
+        const int tbl = s->sawTbl;
+        const float drivePre = B->drivePre;
+        const float drivePost = B->drivePost;
+        const float reso = B->reso;
         for (uint64_t i = 0; i < n; ++i) {
             s->filtEnv.tick(dtSr);
             if ((i & 15) == 0) {
                 const float fenv = s->filtEnv.level;
                 const float cutoff = 120.0f + (1800.0f + 1200.0f * s->vel) * fenv;
-                s->filter.set(cutoff, B->reso, sr);
+                s->filter.set(cutoff, reso, sr);
             }
 
             s->ph1 += dp; if (s->ph1 >= 1.0f) s->ph1 -= 1.0f;
             s->subPh += dpSub; if (s->subPh >= 1.0f) s->subPh -= 1.0f;
-            const float saw = (2.0f * s->ph1 - 1.0f) - polyBlep(s->ph1, dp);
-            const float sub = sinf(kTwoPi * s->subPh) * 0.7f;
+            const float saw = synth::dsp::sawLU(tbl, s->ph1);
+            const float sub = synth::dsp::sineLU(s->subPh) * 0.7f;
             float sig = saw * 0.65f + sub * 0.45f;
             sig = s->filter.tick(sig);
-            sig = tanhf(sig * B->drivePre) * B->drivePost;
+            sig = synth::dsp::tanhFast(sig * drivePre) * drivePost;
             out[i] += sig;
         }
     }

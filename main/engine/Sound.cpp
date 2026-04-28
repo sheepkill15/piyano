@@ -1,16 +1,17 @@
 #include "Sound.h"
 #include "esp_log.h"
-#include <math.h>
 #include "freertos/FreeRTOS.h"
+
+#include <cstdlib>
+#include <cstring>
 
 static const char *TAG = "SOUND";
 
-Sound::Sound() 
+Sound::Sound()
     : sampleRate(44100)
     , masterAmplitude(1.0f)
     , tx_handle(nullptr)
 {
-    // Initialize I2S standard configuration
     std_cfg = i2s_std_config_t{
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(static_cast<uint32_t>(sampleRate)),
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
@@ -31,29 +32,27 @@ Sound::Sound()
 
 void Sound::begin() {
     ESP_LOGI(TAG, "Initializing Sound system...");
-    
-    // Configure I2S channel
+
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
-    
+
     esp_err_t ret = i2s_new_channel(&chan_cfg, &tx_handle, NULL);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to create I2S channel: %s", esp_err_to_name(ret));
         return;
     }
-    
-    // Initialize the standard configuration
+
     ret = i2s_channel_init_std_mode(tx_handle, &std_cfg);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize I2S channel in std mode: %s", esp_err_to_name(ret));
         return;
     }
-    
+
     ret = i2s_channel_enable(tx_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to enable I2S channel: %s", esp_err_to_name(ret));
         return;
     }
-    
+
     ESP_LOGI(TAG, "Sound system initialized - Sample Rate: %d Hz", sampleRate);
 }
 
@@ -61,6 +60,11 @@ Sound::~Sound() {
     if (tx_handle) {
         i2s_channel_disable(tx_handle);
         i2s_del_channel(tx_handle);
+    }
+    if (i2sBuf_) {
+        std::free(i2sBuf_);
+        i2sBuf_ = nullptr;
+        i2sBufFrames_ = 0;
     }
 }
 
@@ -76,44 +80,56 @@ void Sound::setAmplitude(float amplitude) {
     ESP_LOGI(TAG, "Master amplitude set to: %.2f", masterAmplitude);
 }
 
-void Sound::write(const float* mono, size_t frames) {
-    if (!tx_handle) return;
+void Sound::ensureBuffer_(size_t frames) noexcept {
+    if (frames <= i2sBufFrames_ && i2sBuf_) return;
+    if (i2sBuf_) std::free(i2sBuf_);
+    i2sBuf_ = static_cast<int16_t*>(std::malloc(frames * 2 * sizeof(int16_t)));
+    i2sBufFrames_ = i2sBuf_ ? frames : 0;
+}
 
-    // Duplicate mono -> interleaved stereo
-    std::vector<float> stereo(static_cast<size_t>(frames) * 2);
+void Sound::write(const float* mono, size_t frames) {
+    if (!tx_handle || !mono || frames == 0) return;
+
+    ensureBuffer_(frames);
+    if (!i2sBuf_) return;
+
+    const float amp = masterAmplitude;
     for (size_t i = 0; i < frames; ++i) {
-        stereo[2 * i] = mono[i];
-        stereo[2 * i + 1] = mono[i];
+        float s = mono[i] * amp;
+        if (s > 1.0f) s = 1.0f;
+        else if (s < -1.0f) s = -1.0f;
+        const int16_t v = static_cast<int16_t>(s * 32767.0f);
+        i2sBuf_[2 * i]     = v;
+        i2sBuf_[2 * i + 1] = v;
     }
-    writeStereoInterleaved(stereo.data(), frames);
+
+    size_t bytes_written;
+    esp_err_t ret = i2s_channel_write(tx_handle, i2sBuf_, frames * 2 * sizeof(int16_t),
+                                      &bytes_written, portMAX_DELAY);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "I2S write failed: %s", esp_err_to_name(ret));
+    }
 }
 
 void Sound::writeStereoInterleaved(const float* stereoLR, size_t frames) {
-    if (!tx_handle) return;
-    
-    // Apply amplitude scaling and convert float to int16 stereo (interleaved)
-    std::vector<int16_t> scaled_data(static_cast<size_t>(frames) * 2); // Stereo = 2 channels
-    for (size_t i = 0; i < frames; i++) {
-        float l = stereoLR[2 * i] * masterAmplitude;
-        float r = stereoLR[2 * i + 1] * masterAmplitude;
-        
-        // DC blocking filter (simple high-pass)
-        // float filtered_sample = scaled_sample - dcFilterState_;
-        // dcFilterState_ = scaled_sample * 0.995f + dcFilterState_ * 0.995f;
-        // scaled_sample = filtered_sample;
-        
-        // Clamp to prevent overflow
-        if (l > 1.0f) l = 1.0f;
-        else if (l < -1.0f) l = -1.0f;
-        if (r > 1.0f) r = 1.0f;
-        else if (r < -1.0f) r = -1.0f;
+    if (!tx_handle || !stereoLR || frames == 0) return;
 
-        scaled_data[2 * i] = static_cast<int16_t>(l * 32767.0f);
-        scaled_data[2 * i + 1] = static_cast<int16_t>(r * 32767.0f);
+    ensureBuffer_(frames);
+    if (!i2sBuf_) return;
+
+    const float amp = masterAmplitude;
+    for (size_t i = 0; i < frames; ++i) {
+        float l = stereoLR[2 * i]     * amp;
+        float r = stereoLR[2 * i + 1] * amp;
+        if (l > 1.0f) l = 1.0f; else if (l < -1.0f) l = -1.0f;
+        if (r > 1.0f) r = 1.0f; else if (r < -1.0f) r = -1.0f;
+        i2sBuf_[2 * i]     = static_cast<int16_t>(l * 32767.0f);
+        i2sBuf_[2 * i + 1] = static_cast<int16_t>(r * 32767.0f);
     }
-    
+
     size_t bytes_written;
-    esp_err_t ret = i2s_channel_write(tx_handle, scaled_data.data(), frames * 2 * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+    esp_err_t ret = i2s_channel_write(tx_handle, i2sBuf_, frames * 2 * sizeof(int16_t),
+                                      &bytes_written, portMAX_DELAY);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "I2S write failed: %s", esp_err_to_name(ret));
     }

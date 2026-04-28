@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cmath>
+
+#include "synth/dsp/WaveTables.h"
 #include "synth/modules/Adsr.h"
 #include "synth/modules/Oscillator.h"
 #include "synth/modules/Noise.h"
@@ -30,13 +32,12 @@ struct Kick {
     }
 
     inline float tick() noexcept {
-        // crude exponential-ish pitch drop
         pitchEnv *= 0.9992f;
         const float f = freq * (1.0f + 6.0f * pitchEnv);
         phase += f / sampleRate;
-        phase -= floorf(phase);
+        if (phase >= 1.0f) phase -= floorf(phase);
         env.tick(1.0f / sampleRate);
-        const float s = sinf(2.0f * static_cast<float>(M_PI) * phase) * env.level;
+        const float s = synth::dsp::sineLU(phase) * env.level;
         return drive.tick(s);
     }
 };
@@ -65,8 +66,8 @@ struct Snare {
         env.tick(1.0f / sampleRate);
         const float n = bp.tick(noise.tick()) * 0.7f;
         tonePhase += toneFreq / sampleRate;
-        tonePhase -= floorf(tonePhase);
-        const float t = sinf(2.0f * static_cast<float>(M_PI) * tonePhase) * 0.3f;
+        if (tonePhase >= 1.0f) tonePhase -= 1.0f;
+        const float t = synth::dsp::sineLU(tonePhase) * 0.3f;
         return (n + t) * env.level;
     }
 };
@@ -96,4 +97,3 @@ struct Hat {
 };
 
 } // namespace synth::modules
-

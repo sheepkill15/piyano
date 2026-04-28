@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cmath>
 
+#include "synth/dsp/Approx.h"
 #include "synth/modules/Smoother.h"
 
 namespace synth::mix {
@@ -30,8 +31,8 @@ struct GlobalMixer {
     }
 
     inline float softClip(float x) const noexcept {
-        if (x >  kKnee) return  kKnee + kRange * tanhf((x - kKnee) / kRange);
-        if (x < -kKnee) return -kKnee + kRange * tanhf((x + kKnee) / kRange);
+        if (x >  kKnee) return  kKnee + kRange * synth::dsp::tanhFast((x - kKnee) / kRange);
+        if (x < -kKnee) return -kKnee + kRange * synth::dsp::tanhFast((x + kKnee) / kRange);
         return x;
     }
 

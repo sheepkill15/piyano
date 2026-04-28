@@ -8,6 +8,7 @@ idf_component_register(
         "instruments/InstrumentManager.cpp"
         "instruments/PatchDriverRegistry.cpp"
         "instruments/PatchInstrument.cpp"
+        "synth/dsp/WaveTables.cpp"
         "workstation/Workstation.cpp"
     INCLUDE_DIRS 
         "."

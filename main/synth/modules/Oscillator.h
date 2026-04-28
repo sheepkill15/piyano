@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <cmath>
 
+#include "synth/dsp/WaveTables.h"
+
 namespace synth::modules {
 
 enum class OscWave : uint8_t { Sine, Triangle, Saw, Pulse };
@@ -20,20 +22,19 @@ struct Oscillator {
     inline float tick() noexcept {
         const float dp = freqHz / sampleRate;
         phase += dp;
-        phase -= floorf(phase);
+        if (phase >= 1.0f) phase -= 1.0f;
+        else if (phase < 0.0f) phase += 1.0f;
 
         switch (wave) {
-            case OscWave::Sine: {
-                const float x = 2.0f * static_cast<float>(M_PI) * phase;
-                return sinf(x);
-            }
+            case OscWave::Sine:
+                return synth::dsp::sineLU(phase);
             case OscWave::Triangle: {
-                // naive tri from saw
                 const float s = 2.0f * phase - 1.0f;
                 return 2.0f * (fabsf(s) - 0.5f);
             }
             case OscWave::Saw: {
-                return 2.0f * phase - 1.0f;
+                const int idx = synth::dsp::sawTableIdx(freqHz);
+                return synth::dsp::sawLU(idx, phase);
             }
             case OscWave::Pulse: {
                 const float p = (pw < 0.01f) ? 0.01f : (pw > 0.99f ? 0.99f : pw);
@@ -46,4 +47,3 @@ struct Oscillator {
 };
 
 } // namespace synth::modules
-
