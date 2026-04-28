@@ -3,12 +3,12 @@
 #include <cmath>
 #include <cstring>
 
-void SubtractiveInstrument::noteOn(float frequency, float velocity) noexcept {
-    IInstrument::noteOn(frequency, velocity);
+void SubtractiveInstrument::noteOn(uint8_t note, float velocity) noexcept {
+    IInstrument::noteOn(note, velocity);
 }
 
-void SubtractiveInstrument::noteOff(float frequency) noexcept {
-    IInstrument::noteOff(frequency);
+void SubtractiveInstrument::noteOff(uint8_t note) noexcept {
+    IInstrument::noteOff(note);
 }
 
 void SubtractiveInstrument::onVoiceStart(uint8_t voiceIndex, float frequency, float velocity) noexcept {

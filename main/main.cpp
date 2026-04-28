@@ -23,9 +23,6 @@ void onMidiNoteOn(uint8_t channel, uint8_t pitch, uint8_t velocity);
 void onMidiNoteOff(uint8_t channel, uint8_t pitch);
 void handleMidiMessage(const uint8_t (&data)[4]);
 
-// Utility functions
-float midiNoteToFrequency(uint8_t note);
-
 TaskHandle_t soundTaskHandle;
 
 void soundTask(void *parameter) {
@@ -124,21 +121,14 @@ void handleMidiMessage(const uint8_t (&data)[4]) {
 }
 
 void onMidiNoteOn(uint8_t channel, uint8_t pitch, uint8_t velocity) {
-    float frequency = midiNoteToFrequency(pitch);
     float amplitude = velocity / 127.0f;
     if(velocity == 0) {
-        synth.noteOff(frequency);
+        synth.noteOff(pitch);
         return;
     }
-    synth.noteOn(frequency, amplitude);
+    synth.noteOn(pitch, amplitude);
 }
 
 void onMidiNoteOff(uint8_t channel, uint8_t pitch) {
-    float frequency = midiNoteToFrequency(pitch);
-    synth.noteOff(frequency);
-}
-
-float midiNoteToFrequency(uint8_t note) {
-    // MIDI note 69 (A4) = 440 Hz
-    return 440.0f * pow(2.0f, (note - 69) / 12.0f);
+    synth.noteOff(pitch);
 }

@@ -10,9 +10,9 @@ class SynthEngine {
     
         void switchInstrument(IInstrument* newInstrument) noexcept;
     
-        void noteOn(float frequency, float vel) noexcept;
+        void noteOn(uint8_t note, float vel) noexcept;
     
-        void noteOff(float frequency) noexcept;
+        void noteOff(uint8_t note) noexcept;
     
         void render(float* out, uint64_t nSamples) noexcept;
 

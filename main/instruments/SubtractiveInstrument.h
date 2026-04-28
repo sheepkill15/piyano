@@ -5,8 +5,8 @@
 
 class SubtractiveInstrument : public IInstrument {
     public:
-        void noteOn(float frequency, float velocity) noexcept override;
-        void noteOff(float frequency) noexcept override;
+        void noteOn(uint8_t note, float velocity) noexcept override;
+        void noteOff(uint8_t note) noexcept override;
     
     private:
         void renderAddVoice(uint8_t voiceIndex, float* out, uint64_t numSamples) noexcept override;

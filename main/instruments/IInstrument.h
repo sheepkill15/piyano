@@ -10,9 +10,44 @@ class IInstrument {
     public:
         virtual ~IInstrument() = default;
 
+        enum class SameNoteMode : uint8_t {
+            SingleVoicePerKey,   // synth-style: reuse existing voice for the key
+            MultiVoicePerKey     // piano-style: stack multiple voices per key
+        };
+
+        void setSameNoteMode(SameNoteMode mode) noexcept { sameNoteMode_ = mode; }
+        SameNoteMode sameNoteMode() const noexcept { return sameNoteMode_; }
+
+        void setMaxVoices(uint8_t n) noexcept {
+            if (n < 1) n = 1;
+            if (n > MAX_VOICES) n = MAX_VOICES;
+            maxVoices_ = n;
+            if (nextVoiceIndex_ >= maxVoices_) nextVoiceIndex_ = 0;
+        }
+        uint8_t maxVoices() const noexcept { return maxVoices_; }
+
         // Polyphonic voice-handling
-        virtual void noteOn(float frequency, float velocity) noexcept {
-            uint8_t v = allocateVoice_();
+        virtual void noteOn(uint8_t note, float velocity) noexcept {
+            const float frequency = midiNoteToFrequency(note);
+
+            if (sameNoteMode_ == SameNoteMode::SingleVoicePerKey) {
+                const uint8_t existing = lastVoiceForNote_(note);
+                if (existing != kInvalidVoice) {
+                    // Reuse existing voice for this note (retrigger)
+                    voices_[existing].note = note;
+                    voices_[existing].frequency = frequency;
+                    voices_[existing].velocity = velocity;
+                    voices_[existing].active = true;
+                    envelope_[existing].phase = EnvState::Attack;
+                    envelope_[existing].level = 0.0f;
+                    envelope_[existing].timeInPhase = 0.0f;
+                    onVoiceStart(existing, frequency, velocity);
+                    return;
+                }
+            }
+
+            uint8_t v = allocateVoice_(note);
+            voices_[v].note = note;
             voices_[v].frequency = frequency;
             voices_[v].velocity = velocity;
             voices_[v].active = true;
@@ -20,21 +55,27 @@ class IInstrument {
             envelope_[v].level = 0.0f;
             envelope_[v].timeInPhase = 0.0f;
             onVoiceStart(v, frequency, velocity);
+            pushVoiceForNote_(note, v);
         }
 
-        virtual void noteOff(float frequency) noexcept {
-            // Deactivate the first matching voice
-            for (uint8_t i = 0; i < MAX_VOICES; ++i) {
-                if (voices_[i].active && voices_[i].frequency == frequency) {
-                    voices_[i].active = false;
-                    EnvState_& env = envelope_[i];
+        virtual void noteOff(uint8_t note) noexcept {
+            uint8_t v = kInvalidVoice;
+
+            if (sameNoteMode_ == SameNoteMode::MultiVoicePerKey) {
+                v = popVoiceForNote_(note);
+            } else {
+                v = takeLastVoiceForNote_(note);
+            }
+
+            if (v == kInvalidVoice) return;
+            if (envelope_[v].phase == EnvState::Idle) return;
+
+            voices_[v].active = false;
+            EnvState_& env = envelope_[v];
                     env.releaseStartLevel = env.level;
                     env.phase = EnvState::Release;
                     env.timeInPhase = 0.0f;
-                    onVoiceStop(i);
-                    break;
-                }
-            }
+            onVoiceStop(v);
         }
 
         virtual void process(float* outBuffer, uint64_t numSamples) noexcept {
@@ -126,8 +167,10 @@ class IInstrument {
         }
     protected:
         static constexpr uint8_t MAX_VOICES = 8;
+        static constexpr uint8_t MAX_NOTES = 128;
+        static constexpr uint8_t kInvalidVoice = 0xFF;
 
-        struct VoiceState { float frequency = 0.0f; float velocity = 0.0f; bool active = false; };
+        struct VoiceState { uint8_t note = 0; float frequency = 0.0f; float velocity = 0.0f; bool active = false; };
 
         enum class EnvState { Attack, Decay, Sustain, Release, Idle };
         struct EnvState_ {
@@ -153,18 +196,42 @@ class IInstrument {
         inline const EnvState_* getEnvelope(uint8_t v) const noexcept { return &envelope_[v]; }
 
     private:
-        inline uint8_t allocateVoice_() noexcept {
+        static inline float midiNoteToFrequency(uint8_t note) noexcept {
+            return 440.0f * powf(2.0f, (static_cast<int>(note) - 69) / 12.0f);
+        }
+
+        inline void detachVoiceFromNote_(uint8_t voiceIndex) noexcept {
+            const uint8_t note = voices_[voiceIndex].note;
+            if (note >= MAX_NOTES) return;
+            uint8_t& count = noteVoiceCount_[note];
+            for (uint8_t i = 0; i < count; ++i) {
+                if (noteVoices_[note][i] == voiceIndex) {
+                    // swap-remove
+                    noteVoices_[note][i] = noteVoices_[note][static_cast<uint8_t>(count - 1)];
+                    count = static_cast<uint8_t>(count - 1);
+                    return;
+                }
+            }
+        }
+
+        inline uint8_t allocateVoice_(uint8_t newNote) noexcept {
+            const uint8_t limit = maxVoices_;
+
             // First prioritize idle voices
-            for (uint8_t i = 0; i < MAX_VOICES; ++i) {
+            for (uint8_t i = 0; i < limit; ++i) {
                 if (envelope_[i].phase == EnvState::Idle) return i;
             }
+
             // Then prioritize voices in release phase
-            for (uint8_t i = 0; i < MAX_VOICES; ++i) {
+            for (uint8_t i = 0; i < limit; ++i) {
                 if (envelope_[i].phase == EnvState::Release) return i;
             }
+
             // Finally, steal round-robin from anything
             uint8_t v = nextVoiceIndex_;
-            nextVoiceIndex_ = static_cast<uint8_t>((nextVoiceIndex_ + 1) % MAX_VOICES);
+            nextVoiceIndex_ = static_cast<uint8_t>((nextVoiceIndex_ + 1) % limit);
+            (void)newNote;
+            detachVoiceFromNote_(v);
             return v;
         }
 
@@ -172,10 +239,54 @@ class IInstrument {
         VoiceState voices_[MAX_VOICES] = {};
         EnvState_ envelope_[MAX_VOICES] = {};
         uint8_t nextVoiceIndex_ = 0;
+        uint8_t maxVoices_ = MAX_VOICES;
+        SameNoteMode sameNoteMode_ = SameNoteMode::SingleVoicePerKey;
+
+        uint8_t noteVoiceCount_[MAX_NOTES] = {};
+        uint8_t noteVoices_[MAX_NOTES][MAX_VOICES] = {};
         
         float attack_ = 0.01f;
         float decay_ = 0.1f;
         float sustain_ = 0.7f;
         float release_ = 0.2f;
+
+        inline uint8_t lastVoiceForNote_(uint8_t note) const noexcept {
+            if (note >= MAX_NOTES) return kInvalidVoice;
+            const uint8_t count = noteVoiceCount_[note];
+            if (count == 0) return kInvalidVoice;
+            return noteVoices_[note][static_cast<uint8_t>(count - 1)];
+        }
+
+        inline void pushVoiceForNote_(uint8_t note, uint8_t voiceIndex) noexcept {
+            if (note >= MAX_NOTES) return;
+            uint8_t& count = noteVoiceCount_[note];
+            if (count >= MAX_VOICES) {
+                // Shouldn't happen with global max voices, but keep it safe.
+                noteVoices_[note][MAX_VOICES - 1] = voiceIndex;
+                count = MAX_VOICES;
+                return;
+            }
+            noteVoices_[note][count] = voiceIndex;
+            count = static_cast<uint8_t>(count + 1);
+        }
+
+        inline uint8_t popVoiceForNote_(uint8_t note) noexcept {
+            if (note >= MAX_NOTES) return kInvalidVoice;
+            uint8_t& count = noteVoiceCount_[note];
+            while (count > 0) {
+                const uint8_t v = noteVoices_[note][static_cast<uint8_t>(count - 1)];
+                count = static_cast<uint8_t>(count - 1);
+                if (v < MAX_VOICES && envelope_[v].phase != EnvState::Idle && voices_[v].note == note) return v;
+            }
+            return kInvalidVoice;
+        }
+
+        inline uint8_t takeLastVoiceForNote_(uint8_t note) noexcept {
+            // Like pop, but clears all mapping for the note (single-voice semantics)
+            if (note >= MAX_NOTES) return kInvalidVoice;
+            uint8_t v = popVoiceForNote_(note);
+            noteVoiceCount_[note] = 0;
+            return v;
+        }
 };
 #endif

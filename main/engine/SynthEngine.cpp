@@ -12,12 +12,12 @@ void SynthEngine::switchInstrument(IInstrument* newInstrument) noexcept {
     instrument->setSampleRate(sampleRate);
 }
 
-void SynthEngine::noteOn(float frequency, float vel) noexcept {
-    if (instrument) instrument->noteOn(frequency, vel);
+void SynthEngine::noteOn(uint8_t note, float vel) noexcept {
+    if (instrument) instrument->noteOn(note, vel);
 }
 
-void SynthEngine::noteOff(float frequency) noexcept {
-    if (instrument) instrument->noteOff(frequency);
+void SynthEngine::noteOff(uint8_t note) noexcept {
+    if (instrument) instrument->noteOff(note);
 }
 
 void SynthEngine::render(float* out, uint64_t nSamples) noexcept {
