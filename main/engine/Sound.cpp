@@ -7,7 +7,7 @@ static const char *TAG = "SOUND";
 
 Sound::Sound() 
     : sampleRate(44100)
-    , masterAmplitude(0.1f)
+    , masterAmplitude(1.0f)
     , tx_handle(nullptr)
 {
     // Initialize I2S standard configuration
@@ -72,7 +72,7 @@ void Sound::setSampleRate(int rate) {
 void Sound::setAmplitude(float amplitude) {
     if (amplitude > 1.0f) amplitude = 1.0f;
     else if (amplitude < 0.0f) amplitude = 0.0f;
-    masterAmplitude = amplitude * 0.1f;
+    masterAmplitude = amplitude;
     ESP_LOGI(TAG, "Master amplitude set to: %.2f", masterAmplitude);
 }
 

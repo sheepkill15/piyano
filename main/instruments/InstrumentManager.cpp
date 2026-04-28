@@ -1,4 +1,6 @@
 #include "InstrumentManager.h"
+#include "PatchBuilder.h"
+#include "PatchDriver.h"
 
 InstrumentManager::InstrumentManager() noexcept {
     configs_[0] = PatchBuilder::Subtractive();
@@ -25,15 +27,9 @@ uint8_t InstrumentManager::getInstrumentCount() noexcept {
 }
 
 const char* InstrumentManager::getName(uint8_t index) const noexcept {
-    if (index >= MAX_INSTRUMENTS) return "Unknown";
-    switch (configs_[index].kind) {
-        case PatchConfig::Kind::Subtractive: return "Subtractive";
-        case PatchConfig::Kind::FM: return "FM";
-        case PatchConfig::Kind::Piano: return "Piano";
-        case PatchConfig::Kind::EPiano: return "EPiano";
-        case PatchConfig::Kind::Strings: return "Strings";
-        case PatchConfig::Kind::Bass: return "Bass";
-        case PatchConfig::Kind::Drums: return "Drums";
-        default: return "Unknown";
+    if (index >= MAX_INSTRUMENTS) {
+        return "Unknown";
     }
+    const PatchDriver* d = configs_[index].driver;
+    return d ? d->name() : "Unknown";
 }

@@ -2,11 +2,21 @@
 #include <cstring>
 #include <cmath>
 
-void SynthEngine::init(IInstrument* initialInstrument, float sampleRate) noexcept {
-instrument = initialInstrument;
-    this->sampleRate = sampleRate;
+namespace {
+constexpr uint64_t kBlockSize = 256;
+// Per-voice headroom so several simultaneous voices don't slam the limiter.
+// 8-voice full-vel chord sums to ~MAX_VOICES * kVoiceGain in mono ~= 2.0 worst-case,
+// landing near the soft-knee but not hard-clipping.
+constexpr float kVoiceGain = 0.5f;
+}
+
+void SynthEngine::init(IInstrument* initialInstrument, float sr) noexcept {
+    instrument = initialInstrument;
+    sampleRate = sr;
     allocator_.reset();
     for (auto& e : ampEnv_) e.reset();
+    for (auto& v : voiceVelocity_) v = 0.0f;
+    mixer_.init(sampleRate);
     if (instrument) {
         instrument->setSampleRate(sampleRate);
         allocator_.setMaxVoices(instrument->defaultMaxVoices());
@@ -18,6 +28,7 @@ void SynthEngine::switchInstrument(IInstrument* newInstrument) noexcept {
     instrument = newInstrument;
     allocator_.reset();
     for (auto& e : ampEnv_) e.reset();
+    for (auto& v : voiceVelocity_) v = 0.0f;
     if (instrument) {
         instrument->setSampleRate(sampleRate);
         allocator_.setMaxVoices(instrument->defaultMaxVoices());
@@ -34,6 +45,7 @@ void SynthEngine::noteOn(uint8_t note, float vel) noexcept {
 
     const uint8_t v = allocator_.noteOn(ev, sameNoteMode_);
     ampEnv_[v].noteOn();
+    voiceVelocity_[v] = vel;
 
     VoiceContext ctx;
     ctx.note = note;
@@ -51,7 +63,6 @@ void SynthEngine::noteOff(uint8_t note) noexcept {
 }
 
 bool SynthEngine::setParam(uint16_t paramId, float value) noexcept {
-    // Keep ADSR compatible with existing param IDs (1..4).
     switch (paramId) {
         case 10: // MasterGain
             mixer_.setMasterGain(value);
@@ -74,40 +85,63 @@ bool SynthEngine::setParam(uint16_t paramId, float value) noexcept {
     return instrument ? instrument->setParam(paramId, value) : false;
 }
 
-void SynthEngine::render(float* out, uint64_t nSamples) noexcept {
-    std::memset(out, 0, static_cast<size_t>(nSamples) * sizeof(float));
+void SynthEngine::render(float* stereoLR, uint64_t nFrames) noexcept {
+    std::memset(stereoLR, 0, static_cast<size_t>(nFrames) * 2 * sizeof(float));
     if (!instrument) return;
 
-    static float voiceTmp[1024];
-    if (nSamples > 1024) {
-        // Fallback: render directly into out in chunks (no extra allocations)
-        uint64_t offset = 0;
-        while (offset < nSamples) {
-            const uint64_t block = (nSamples - offset > 1024) ? 1024 : (nSamples - offset);
-            for (uint8_t v = 0; v < MAX_VOICES; ++v) {
-                if (!ampEnv_[v].isActive()) continue;
-                std::memset(voiceTmp, 0, static_cast<size_t>(block) * sizeof(float));
-                instrument->renderAddVoice(v, voiceTmp, block);
-                const float env = ampEnv_[v].level;
-                for (uint64_t i = 0; i < block; ++i) out[offset + i] += voiceTmp[i] * env;
+    const float dtPerSample = 1.0f / sampleRate;
+
+    static float voiceTmp[kBlockSize];
+    static float envBuf[kBlockSize];
+
+    uint64_t offset = 0;
+    while (offset < nFrames) {
+        const uint64_t block = (nFrames - offset > kBlockSize) ? kBlockSize : (nFrames - offset);
+
+        for (uint8_t v = 0; v < MAX_VOICES; ++v) {
+            if (!ampEnv_[v].isActive()) continue;
+
+            // Per-sample envelope curve for the block.
+            for (uint64_t i = 0; i < block; ++i) {
+                ampEnv_[v].tick(dtPerSample);
+                envBuf[i] = ampEnv_[v].level;
             }
-            offset += block;
+            if (!ampEnv_[v].isActive()) {
+                // Quick fade-out to zero (silence the tail to avoid clicks)
+            }
+
+            std::memset(voiceTmp, 0, static_cast<size_t>(block) * sizeof(float));
+            instrument->renderAddVoice(v, voiceTmp, block);
+
+            // Velocity-aware gain (a bit of velocity sensitivity baked into the engine).
+            const float vel = voiceVelocity_[v];
+            const float velGain = 0.45f + 0.55f * vel;
+
+            // Equal-power pan
+            float pan = instrument->voicePan(v);
+            if (pan < -1.0f) pan = -1.0f;
+            if (pan > 1.0f) pan = 1.0f;
+            const float panAng = (pan + 1.0f) * 0.25f * static_cast<float>(M_PI); // 0..pi/2
+            const float panL = cosf(panAng);
+            const float panR = sinf(panAng);
+
+            float* dst = stereoLR + offset * 2;
+            const float gL = panL * velGain * kVoiceGain;
+            const float gR = panR * velGain * kVoiceGain;
+            for (uint64_t i = 0; i < block; ++i) {
+                const float s = voiceTmp[i] * envBuf[i];
+                dst[2 * i]     += s * gL;
+                dst[2 * i + 1] += s * gR;
+            }
         }
-        return;
+
+        offset += block;
     }
 
-    for (uint8_t v = 0; v < MAX_VOICES; ++v) {
-        if (!ampEnv_[v].isActive()) continue;
-        std::memset(voiceTmp, 0, static_cast<size_t>(nSamples) * sizeof(float));
-        instrument->renderAddVoice(v, voiceTmp, nSamples);
-        const float env = ampEnv_[v].level;
-        for (uint64_t i = 0; i < nSamples; ++i) out[i] += voiceTmp[i] * env;
-    }
-
-    mixer_.processMono(out, nSamples);
+    mixer_.processStereo(stereoLR, nFrames);
 }
 
 void SynthEngine::update(float dt) noexcept {
-    (void)instrument;
-    for (auto& e : ampEnv_) e.tick(dt);
+    (void)dt;
+    // Envelopes are now ticked per-sample inside render().
 }

@@ -6,6 +6,7 @@ idf_component_register(
         "engine/SynthEngine.cpp"
         "engine/Sound.cpp"
         "instruments/InstrumentManager.cpp"
+        "instruments/PatchDriverRegistry.cpp"
         "instruments/PatchInstrument.cpp"
         "workstation/Workstation.cpp"
     INCLUDE_DIRS 

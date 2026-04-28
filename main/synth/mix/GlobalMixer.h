@@ -3,25 +3,45 @@
 #include <cstdint>
 #include <cmath>
 
+#include "synth/modules/Smoother.h"
+
 namespace synth::mix {
 
 struct GlobalMixer {
-    float masterGain = 0.25f; // linear
-    float clipLimit = 0.95f;
+    // Soft-knee limiter: fully transparent below kKnee, smooth tanh saturation
+    // between kKnee and kCeil, asymptote at kCeil. Avoids the audible distortion
+    // a global tanh produces in the "normal" signal range.
+    static constexpr float kKnee = 0.75f;
+    static constexpr float kCeil = 0.98f;
+    static constexpr float kRange = kCeil - kKnee; // 0.23
 
-    void setMasterGain(float g) noexcept { masterGain = g; }
+    synth::modules::Smoother1p gainSmoother{};
 
-    inline float softClip(float x) const noexcept {
-        return tanhf(x / clipLimit) * clipLimit;
+    void init(float sampleRate) noexcept {
+        gainSmoother.setTimeConstant(0.020f, sampleRate);
+        gainSmoother.reset(0.5f);
+        gainSmoother.setTarget(0.5f);
     }
 
-    void processMono(float* buffer, uint64_t n) noexcept {
-        for (uint64_t i = 0; i < n; ++i) {
-            float x = buffer[i] * masterGain;
-            buffer[i] = softClip(x);
+    void setMasterGain(float g) noexcept {
+        if (g < 0.0f) g = 0.0f;
+        if (g > 4.0f) g = 4.0f;
+        gainSmoother.setTarget(g);
+    }
+
+    inline float softClip(float x) const noexcept {
+        if (x >  kKnee) return  kKnee + kRange * tanhf((x - kKnee) / kRange);
+        if (x < -kKnee) return -kKnee + kRange * tanhf((x + kKnee) / kRange);
+        return x;
+    }
+
+    void processStereo(float* interleavedLR, uint64_t nFrames) noexcept {
+        for (uint64_t i = 0; i < nFrames; ++i) {
+            const float g = gainSmoother.tick();
+            interleavedLR[2 * i]     = softClip(interleavedLR[2 * i]     * g);
+            interleavedLR[2 * i + 1] = softClip(interleavedLR[2 * i + 1] * g);
         }
     }
 };
 
 } // namespace synth::mix
-

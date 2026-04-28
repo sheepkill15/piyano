@@ -27,16 +27,11 @@ TaskHandle_t soundTaskHandle;
 
 void soundTask(void *parameter) {
     const int bufferSize = 1024;
-    static float mono[bufferSize];
     static float stereo[bufferSize * 2];
-    
+
     for (;;) {
-      synthEngine.render(mono, bufferSize);
-      for (int i = 0; i < bufferSize; ++i) {
-          stereo[2 * i] = mono[i];
-          stereo[2 * i + 1] = mono[i];
-      }
-      sound.writeStereoInterleaved(stereo, bufferSize);
+        synthEngine.render(stereo, bufferSize);
+        sound.writeStereoInterleaved(stereo, bufferSize);
     }
 }
 

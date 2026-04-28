@@ -31,7 +31,7 @@ private:
     uint8_t currentInstrument_ = 0;
     uint8_t currentPreset_ = 0;
 
-    static constexpr uint8_t MAX_PRESETS = 8;
+    static constexpr uint8_t MAX_PRESETS = 16;
     Preset presets_[MAX_PRESETS] = {};
     uint8_t presetCount_ = 0;
 };
