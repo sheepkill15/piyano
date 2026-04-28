@@ -335,7 +335,7 @@ struct PianoDriver final : public PatchDriver {
         const float invSr = 1.0f / sr;
         const float dp1 = f * invSr;
         const float dp2 = (f * 2.0f) * invSr;
-        const float dp3 = (f * 3.01f) * invSr; // slight inharmonicity tone
+        const float dp3 = (f * 3.0f) * invSr;
         const float harm2 = 0.20f;
         const float harm3 = 0.06f;
         PianoBodyState& bdy = st->body;
