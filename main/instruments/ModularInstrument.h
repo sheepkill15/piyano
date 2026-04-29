@@ -28,7 +28,6 @@ public:
     const synth::patch::Patch& patch() const noexcept { return patch_; }
 
     const char* name() const noexcept override { return patch_.name; }
-    void setSampleRate(float sr) noexcept override;
     uint8_t defaultMaxVoices() const noexcept override { return patch_.maxVoices; }
     synth::voice::SameNoteMode defaultSameNoteMode() const noexcept override {
         return patch_.sameNoteMode;
@@ -87,7 +86,6 @@ private:
     };
 
     void resetVoice_(uint8_t v) noexcept;
-    void applySampleRateToVoice_(uint8_t v) noexcept;
     void ensureResonatorBuffer_() noexcept;
     void freeResonatorBuffer_() noexcept;
     float* voiceResoBuf_(uint8_t v) noexcept;
@@ -97,6 +95,5 @@ private:
 
     synth::patch::Patch patch_{};
     VoiceState voices_[MAX_VOICES] = {};
-    float sampleRate_ = 44100.0f;
     float* resoBuf_ = nullptr;
 };

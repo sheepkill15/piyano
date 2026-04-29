@@ -15,8 +15,6 @@ public:
 
     virtual const char* name() const noexcept = 0;
 
-    virtual void setSampleRate(float sr) noexcept = 0;
-
     virtual uint8_t defaultMaxVoices() const noexcept { return 8; }
     virtual synth::voice::SameNoteMode defaultSameNoteMode() const noexcept {
         return synth::voice::SameNoteMode::SingleVoicePerKey;

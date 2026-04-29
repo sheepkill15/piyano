@@ -5,6 +5,7 @@ idf_component_register(
         "UsbMidi.cpp"
         "engine/SynthEngine.cpp"
         "engine/Sound.cpp"
+        "engine/AudioContext.cpp"
         "instruments/ModularInstrument.cpp"
         "synth/dsp/WaveTables.cpp"
         "workstation/Workstation.cpp"

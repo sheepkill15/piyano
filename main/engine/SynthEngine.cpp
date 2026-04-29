@@ -1,4 +1,5 @@
 #include "SynthEngine.h"
+#include "engine/AudioContext.h"
 #include <cstring>
 #include <cmath>
 
@@ -10,15 +11,13 @@ constexpr uint64_t kBlockSize = 256;
 constexpr float kVoiceGain = 0.5f;
 }
 
-void SynthEngine::init(IInstrument* initialInstrument, float sr) noexcept {
+void SynthEngine::init(IInstrument* initialInstrument) noexcept {
     instrument = initialInstrument;
-    sampleRate = sr;
     allocator_.reset();
     for (auto& e : ampEnv_) e.reset();
     for (auto& v : voiceVelocity_) v = 0.0f;
-    mixer_.init(sampleRate);
+    mixer_.init(engine::gAudio.sampleRate);
     if (instrument) {
-        instrument->setSampleRate(sampleRate);
         allocator_.setMaxVoices(instrument->defaultMaxVoices());
         sameNoteMode_ = instrument->defaultSameNoteMode();
     }
@@ -30,7 +29,6 @@ void SynthEngine::switchInstrument(IInstrument* newInstrument) noexcept {
     for (auto& e : ampEnv_) e.reset();
     for (auto& v : voiceVelocity_) v = 0.0f;
     if (instrument) {
-        instrument->setSampleRate(sampleRate);
         allocator_.setMaxVoices(instrument->defaultMaxVoices());
         sameNoteMode_ = instrument->defaultSameNoteMode();
     }
@@ -89,7 +87,7 @@ void SynthEngine::render(float* stereoLR, uint64_t nFrames) noexcept {
     std::memset(stereoLR, 0, static_cast<size_t>(nFrames) * 2 * sizeof(float));
     if (!instrument) return;
 
-    const float dtPerSample = 1.0f / sampleRate;
+    const float dtPerSample = engine::gAudio.invSampleRate;
 
     static float voiceTmp[kBlockSize];
     static float envBuf[kBlockSize];

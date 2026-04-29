@@ -4,23 +4,22 @@
 #include <cmath>
 
 #include "synth/dsp/WaveTables.h"
+#include "engine/AudioContext.h"
 
 namespace synth::modules {
 
 enum class OscWave : uint8_t { Sine, Triangle, Saw, Pulse };
 
 struct Oscillator {
-    float sampleRate = 44100.0f;
     float phase = 0.0f;   // 0..1
     float freqHz = 440.0f;
     float pw = 0.5f;      // 0..1 (pulse width)
     OscWave wave = OscWave::Sine;
 
-    void setSampleRate(float sr) noexcept { sampleRate = sr; }
     void reset(float ph = 0.0f) noexcept { phase = ph; }
 
     inline float tick() noexcept {
-        const float dp = freqHz / sampleRate;
+        const float dp = freqHz * engine::gAudio.invSampleRate;
         phase += dp;
         if (phase >= 1.0f) phase -= 1.0f;
         else if (phase < 0.0f) phase += 1.0f;

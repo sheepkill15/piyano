@@ -6,6 +6,7 @@
 #include "instruments/InstrumentManager.h"
 #include "engine/SynthEngine.h"
 #include "engine/Sound.h"
+#include "engine/AudioContext.h"
 #include "synth/dsp/WaveTables.h"
 #include "workstation/Workstation.h"
 #include <cmath>
@@ -52,7 +53,8 @@ extern "C" void app_main()
 
     synth::dsp::initWaveTables();
     sound.begin();
-    synthEngine.init(manager.current(), static_cast<float>(sound.sampleRate));
+    engine::gAudio.setSampleRate(static_cast<float>(sound.sampleRate));
+    synthEngine.init(manager.current());
     workstation.begin();
     
     // Initialize MIDI with custom handler

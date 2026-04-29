@@ -1,4 +1,5 @@
 #include "Sound.h"
+#include "engine/AudioContext.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 
@@ -12,6 +13,7 @@ Sound::Sound()
     , masterAmplitude(1.0f)
     , tx_handle(nullptr)
 {
+    engine::gAudio.setSampleRate(static_cast<float>(sampleRate));
     std_cfg = i2s_std_config_t{
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(static_cast<uint32_t>(sampleRate)),
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
@@ -32,6 +34,7 @@ Sound::Sound()
 
 void Sound::begin() {
     ESP_LOGI(TAG, "Initializing Sound system...");
+    engine::gAudio.setSampleRate(static_cast<float>(sampleRate));
 
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
 
@@ -70,6 +73,7 @@ Sound::~Sound() {
 
 void Sound::setSampleRate(int rate) {
     sampleRate = rate;
+    engine::gAudio.setSampleRate(static_cast<float>(sampleRate));
     ESP_LOGI(TAG, "Sample rate set to: %d Hz", rate);
 }
 

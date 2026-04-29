@@ -9,7 +9,7 @@
 
 class SynthEngine {
     public:
-        void init(IInstrument* initialInstrument, float sampleRate) noexcept;
+        void init(IInstrument* initialInstrument) noexcept;
 
         void switchInstrument(IInstrument* newInstrument) noexcept;
 
@@ -26,7 +26,6 @@ class SynthEngine {
 
     private:
         IInstrument* instrument = nullptr;
-        float sampleRate = 44100.0f;
 
         static constexpr uint8_t MAX_VOICES = 8;
         synth::voice::VoiceAllocator<MAX_VOICES> allocator_ = {};

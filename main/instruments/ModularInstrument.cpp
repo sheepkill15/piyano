@@ -1,6 +1,7 @@
 #include "ModularInstrument.h"
 
 #include "workstation/Params.h"
+#include "engine/AudioContext.h"
 
 #include "synth/dsp/Approx.h"
 #include "synth/dsp/WaveTables.h"
@@ -86,21 +87,7 @@ void ModularInstrument::setPatch(const synth::patch::Patch& patch) noexcept {
     ensureResonatorBuffer_();
     for (uint8_t v = 0; v < MAX_VOICES; ++v) {
         resetVoice_(v);
-        applySampleRateToVoice_(v);
     }
-}
-
-void ModularInstrument::setSampleRate(float sr) noexcept {
-    sampleRate_ = sr;
-    for (uint8_t v = 0; v < MAX_VOICES; ++v) applySampleRateToVoice_(v);
-}
-
-void ModularInstrument::applySampleRateToVoice_(uint8_t v) noexcept {
-    VoiceState& s = voices_[v];
-    for (auto& l : s.lfos) l.setSampleRate(sampleRate_);
-    s.kick.setSampleRate(sampleRate_);
-    s.snare.setSampleRate(sampleRate_);
-    s.hat.setSampleRate(sampleRate_);
 }
 
 void ModularInstrument::resetVoice_(uint8_t v) noexcept {
@@ -153,9 +140,9 @@ void ModularInstrument::onVoiceStart(uint8_t v, const VoiceContext& ctx) noexcep
         s.pan = pan;
         const float vel = clampf(ctx.velocity * velScale, 0.0f, 1.0f);
         switch (kind) {
-            case synth::patch::DrumPadKind::Kick:  s.kick.setSampleRate(sampleRate_);  s.kick.trigger(vel);  break;
-            case synth::patch::DrumPadKind::Snare: s.snare.setSampleRate(sampleRate_); s.snare.trigger(vel); break;
-            case synth::patch::DrumPadKind::Hat:   s.hat.setSampleRate(sampleRate_);   s.hat.trigger(vel);   break;
+            case synth::patch::DrumPadKind::Kick:  s.kick.trigger(vel);  break;
+            case synth::patch::DrumPadKind::Snare: s.snare.trigger(vel); break;
+            case synth::patch::DrumPadKind::Hat:   s.hat.trigger(vel);   break;
         }
         return;
     }
@@ -192,7 +179,6 @@ void ModularInstrument::onVoiceStart(uint8_t v, const VoiceContext& ctx) noexcep
     for (uint8_t i = 0; i < patch_.lfoCount && i < synth::patch::MAX_LFOS; ++i) {
         auto& l = s.lfos[i];
         l = synth::modules::Lfo{};
-        l.setSampleRate(sampleRate_);
         l.wave = toLfoWave(patch_.lfos[i].shape);
         l.rateHz = patch_.lfos[i].rateHz + patch_.lfos[i].perVoiceRateSpread * static_cast<float>(v);
         l.phase = patch_.lfos[i].perVoicePhase * static_cast<float>(v);
@@ -205,7 +191,7 @@ void ModularInstrument::onVoiceStart(uint8_t v, const VoiceContext& ctx) noexcep
         f.mode = toSvfMode(patch_.filters[i].mode);
         const float cutoff = patch_.filters[i].cutoffHz
                            + patch_.filters[i].velToCutoffHz * ctx.velocity;
-        f.set(cutoff, patch_.filters[i].resonance, sampleRate_);
+        f.set(cutoff, patch_.filters[i].resonance, engine::gAudio.sampleRate);
     }
 
     if (patch_.noise.shape == synth::patch::NoiseShape::Pinkish) {
@@ -221,7 +207,7 @@ void ModularInstrument::onVoiceStart(uint8_t v, const VoiceContext& ctx) noexcep
 
     if (patch_.resonator.enabled) {
         const float f = (ctx.frequency < 20.0f) ? 20.0f : ctx.frequency;
-        std::size_t delay = static_cast<std::size_t>(sampleRate_ / f);
+        std::size_t delay = static_cast<std::size_t>(engine::gAudio.sampleRate / f);
         if (delay < 2) delay = 2;
         if (delay >= kResonatorBufSamples) delay = kResonatorBufSamples - 1;
         s.resoDelay = delay;
@@ -235,11 +221,11 @@ void ModularInstrument::onVoiceStart(uint8_t v, const VoiceContext& ctx) noexcep
         }
         s.bodyHp = synth::modules::Svf{};
         s.bodyHp.mode = synth::modules::SvfMode::HighPass;
-        s.bodyHp.set(patch_.resonator.bodyHpHz, 0.0f, sampleRate_);
+        s.bodyHp.set(patch_.resonator.bodyHpHz, 0.0f, engine::gAudio.sampleRate);
         s.outLp.reset(0.0f);
         const float tone = patch_.resonator.outputLpHzBase
                          + patch_.resonator.outputLpHzVel * ctx.velocity;
-        s.outLp.setCutoffHz(tone, sampleRate_);
+        s.outLp.setCutoffHz(tone, engine::gAudio.sampleRate);
     }
 }
 
@@ -275,9 +261,9 @@ void ModularInstrument::renderDrum_(VoiceState& s, float* out, uint64_t n) noexc
 
 void ModularInstrument::renderSynth_(VoiceState& s, float* out, uint64_t n) noexcept {
     const synth::patch::Patch& p = patch_;
-    const float sr = sampleRate_;
-    const float invSr = 1.0f / sr;
-    const float dtSr = invSr;
+    const float sr = engine::gAudio.sampleRate;
+    const float invSr = engine::gAudio.invSampleRate;
+    const float dtSr = engine::gAudio.invSampleRate;
     const float fbScale = kInv2Pi;     // converts radians-feedback to phase units
     const float idxPhScale = kInv2Pi;  // converts radians-FM index to phase units
 
