@@ -5,9 +5,7 @@ idf_component_register(
         "UsbMidi.cpp"
         "engine/SynthEngine.cpp"
         "engine/Sound.cpp"
-        "instruments/InstrumentManager.cpp"
-        "instruments/PatchDriverRegistry.cpp"
-        "instruments/PatchInstrument.cpp"
+        "instruments/ModularInstrument.cpp"
         "synth/dsp/WaveTables.cpp"
         "workstation/Workstation.cpp"
     INCLUDE_DIRS 

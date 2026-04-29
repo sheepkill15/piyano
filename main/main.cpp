@@ -52,7 +52,7 @@ extern "C" void app_main()
 
     synth::dsp::initWaveTables();
     sound.begin();
-    synthEngine.init(manager.select(0), static_cast<float>(sound.sampleRate));
+    synthEngine.init(manager.current(), static_cast<float>(sound.sampleRate));
     workstation.begin();
     
     // Initialize MIDI with custom handler
