@@ -156,7 +156,7 @@ struct Patch {
     float panSpread = 0.0f;        // -spread..+spread alternating per voice index
 
     uint8_t maxVoices = 8;
-    synth::voice::SameNoteMode sameNoteMode = synth::voice::SameNoteMode::SingleVoicePerKey;
+    voice::SameNoteMode sameNoteMode = voice::SameNoteMode::SingleVoicePerKey;
 
     // FM helpers exposed so MIDI CCs can globally scale FM character without
     // editing the patch. The synth path multiplies oscs[*].fmIndex by fmIndexScale

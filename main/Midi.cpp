@@ -1,7 +1,7 @@
 #include "Midi.h"
 #include "esp_log.h"
 
-static const char *TAG = "MIDI";
+static auto TAG = "MIDI";
 
 Midi* Midi::instance = nullptr;
 
@@ -16,14 +16,16 @@ Midi::~Midi() {
     instance = nullptr;
 }
 
-void Midi::begin() {
+void Midi::begin() const
+{
     usbMidi->onMidiMessage(handleMidiMessage);
     usbMidi->onDeviceConnected(handleDeviceConnected);
     usbMidi->onDeviceDisconnected(handleDeviceDisconnected);
     usbMidi->begin();
 }
 
-void Midi::update() {
+void Midi::update() const
+{
     usbMidi->update();
 }
 

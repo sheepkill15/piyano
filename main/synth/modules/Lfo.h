@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cmath>
 
+#include "synth/dsp/Prng.h"
 #include "synth/dsp/WaveTables.h"
 #include "engine/AudioContext.h"
 
@@ -17,17 +18,19 @@ struct Lfo {
     uint32_t shState = 0x13579BDFu;
     float shValue = 0.0f;
 
-    void reset(float ph = 0.0f) noexcept { phase = ph; }
+    void reset(const float ph = 0.0f) noexcept { phase = ph; }
 
-    inline float tick() noexcept {
+    float tick() noexcept {
         const float prev = phase;
         phase += rateHz * engine::gAudio.invSampleRate;
-        if (phase >= 1.0f) phase -= floorf(phase);
+        // Per-sample increment is small (rate << sampleRate), so a single
+        // subtract is always enough to wrap back into [0, 1).
+        if (phase >= 1.0f) phase -= 1.0f;
 
         const bool wrapped = phase < prev;
         switch (wave) {
             case LfoWave::Sine:
-                return synth::dsp::sineLU(phase);
+                return dsp::sineLU(phase);
             case LfoWave::Triangle: {
                 const float s = 2.0f * phase - 1.0f;
                 return 2.0f * (fabsf(s) - 0.5f);
@@ -36,12 +39,7 @@ struct Lfo {
                 return (phase < 0.5f) ? 1.0f : -1.0f;
             }
             case LfoWave::SampleHold: {
-                if (wrapped) {
-                    shState = shState * 1664525u + 1013904223u;
-                    const uint32_t x = shState >> 9;
-                    const float f = static_cast<float>(x) * (1.0f / 4194304.0f);
-                    shValue = f * 2.0f - 1.0f;
-                }
+                if (wrapped) shValue = dsp::prngLcg11(shState);
                 return shValue;
             }
             default:

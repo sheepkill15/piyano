@@ -31,7 +31,7 @@ extern const float gSawTableMaxFreq[kSawTables];
 void initWaveTables() noexcept;
 
 // Linearly interpolated sine for phase in [0, 1). Caller must keep phase wrapped.
-inline float sineLU(float phase01) noexcept {
+inline float sineLU(const float phase01) noexcept {
     const float idxF = phase01 * static_cast<float>(kSineSize);
     const int i = static_cast<int>(idxF);
     const float frac = idxF - static_cast<float>(i);
@@ -42,7 +42,7 @@ inline float sineLU(float phase01) noexcept {
 }
 
 // Sine for an arbitrary radians angle (FM-style modulated phase). Handles wrap.
-inline float sineLURad(float angleRad) noexcept {
+inline float sineLURad(const float angleRad) noexcept {
     constexpr float kInv2Pi = 0.15915494309189535f;
     float p = angleRad * kInv2Pi;
     p -= floorf(p);
@@ -50,7 +50,7 @@ inline float sineLURad(float angleRad) noexcept {
 }
 
 // Pick a saw mipmap table for fundamental f (Hz). Cheap branchless-ish ladder.
-inline int sawTableIdx(float f) noexcept {
+inline int sawTableIdx(const float f) noexcept {
     int idx = 0;
     while (idx < kSawTables - 1 && f >= gSawTableMaxFreq[idx]) {
         ++idx;
@@ -59,7 +59,7 @@ inline int sawTableIdx(float f) noexcept {
 }
 
 // Bandlimited sawtooth lookup; phase01 in [0, 1).
-inline float sawLU(int tableIdx, float phase01) noexcept {
+inline float sawLU(const int tableIdx, const float phase01) noexcept {
     const float idxF = phase01 * static_cast<float>(kSawTableSize);
     const int i = static_cast<int>(idxF);
     const float frac = idxF - static_cast<float>(i);

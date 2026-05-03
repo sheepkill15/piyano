@@ -10,14 +10,14 @@ struct Drive {
     float preGain = 1.0f;
     float postGain = 1.0f;
 
-    inline float tick(float x) const noexcept {
-        const float y = synth::dsp::tanhFast(x * preGain);
+    [[nodiscard]] float tick(const float x) const noexcept {
+        const float y = dsp::tanhFast(x * preGain);
         return y * postGain;
     }
 };
 
-inline float softClip(float x, float limit = 0.95f) noexcept {
-    return synth::dsp::tanhFast(x / limit) * limit;
+inline float softClip(const float x, const float limit = 0.95f) noexcept {
+    return dsp::softClipFast(x, limit);
 }
 
 } // namespace synth::modules

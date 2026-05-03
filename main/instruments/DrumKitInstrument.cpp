@@ -1,12 +1,8 @@
 #include "DrumKitInstrument.h"
 
-namespace {
+#include "synth/dsp/Util.h"
 
-inline float clampf(float x, float lo, float hi) noexcept {
-    return x < lo ? lo : (x > hi ? hi : x);
-}
-
-} // namespace
+#include <type_traits>
 
 void DrumKitInstrument::setPatch(const synth::patch::Patch& patch) noexcept {
     name_ = patch.name;
@@ -33,7 +29,7 @@ void DrumKitInstrument::onVoiceStart(uint8_t v, const VoiceContext& ctx) noexcep
     const PadResolve& r = notePad_[ctx.note & 127];
     Voice& s = voices_[v];
     s.pan = r.pan;
-    const float vel = clampf(ctx.velocity * r.velScale, 0.0f, 1.0f);
+    const float vel = synth::dsp::clamp(ctx.velocity * r.velScale, 0.0f, 1.0f);
     switch (r.kind) {
         case synth::patch::DrumPadKind::Kick:
             s.body.template emplace<1>();
@@ -53,27 +49,14 @@ void DrumKitInstrument::onVoiceStart(uint8_t v, const VoiceContext& ctx) noexcep
 void DrumKitInstrument::renderAddVoice(uint8_t v, float* out, uint64_t n) noexcept {
     if (v >= MAX_VOICES || !out || n == 0) return;
     auto& body = voices_[v].body;
-    switch (body.index()) {
-        case 0:
-            break;
-        case 1: {
-            auto& d = std::get<1>(body);
+    std::visit([out, n](auto& d) {
+        using T = std::decay_t<decltype(d)>;
+        if constexpr (std::is_same_v<T, std::monostate>) {
+            (void)d;
+        } else {
             for (uint64_t i = 0; i < n; ++i) out[i] += d.tick();
-            break;
         }
-        case 2: {
-            auto& d = std::get<2>(body);
-            for (uint64_t i = 0; i < n; ++i) out[i] += d.tick();
-            break;
-        }
-        case 3: {
-            auto& d = std::get<3>(body);
-            for (uint64_t i = 0; i < n; ++i) out[i] += d.tick();
-            break;
-        }
-        default:
-            break;
-    }
+    }, body);
 }
 
 float DrumKitInstrument::voicePan(uint8_t v) const noexcept {

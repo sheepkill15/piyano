@@ -54,13 +54,13 @@ public:
 
     void onMidiMessage(MidiMessageCallback callback);
 
-    bool sendMidiMessage(const uint8_t* message, uint8_t size = 4);
-    bool noteOn(uint8_t channel, uint8_t note, uint8_t velocity);
-    bool noteOff(uint8_t channel, uint8_t note, uint8_t velocity);
-    bool controlChange(uint8_t channel, uint8_t controller, uint8_t value);
-    bool programChange(uint8_t channel, uint8_t program);
+    bool sendMidiMessage(const uint8_t* message, uint8_t size = 4) const;
+    [[nodiscard]] bool noteOn(uint8_t channel, uint8_t note, uint8_t velocity) const;
+    [[nodiscard]] bool noteOff(uint8_t channel, uint8_t note, uint8_t velocity) const;
+    [[nodiscard]] bool controlChange(uint8_t channel, uint8_t controller, uint8_t value) const;
+    [[nodiscard]] bool programChange(uint8_t channel, uint8_t program) const;
 
-    size_t getQueueAvailableSize() const;
+    [[nodiscard]] size_t getQueueAvailableSize() const;
 
     void onDeviceConnected(void (*callback)());
     void onDeviceDisconnected(void (*callback)());

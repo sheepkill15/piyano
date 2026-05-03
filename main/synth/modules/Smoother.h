@@ -9,14 +9,14 @@ struct Smoother1p {
     float y = 0.0f;      // state
     float target = 0.0f; // desired value
 
-    void setTimeConstant(float tauSeconds, float sampleRate) noexcept {
+    void setTimeConstant(const float tauSeconds, const float sampleRate) noexcept {
         if (tauSeconds <= 0.0f) { a = 0.0f; return; }
         const float x = 1.0f / (tauSeconds * sampleRate);
         a = (x > 1.0f) ? 1.0f : x;
     }
 
-    void reset(float v = 0.0f) noexcept { y = v; target = v; }
-    void setTarget(float v) noexcept { target = v; }
+    void reset(const float v = 0.0f) noexcept { y = v; target = v; }
+    void setTarget(const float v) noexcept { target = v; }
 
     float tick() noexcept {
         y += (target - y) * a;

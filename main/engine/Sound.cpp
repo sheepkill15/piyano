@@ -6,7 +6,10 @@
 #include <cstdlib>
 #include <cstring>
 
-static const char *TAG = "SOUND";
+#include "synth/dsp/Approx.h"
+#include "synth/dsp/Util.h"
+
+static auto TAG = "SOUND";
 
 Sound::Sound()
     : sampleRate(44100)
@@ -34,11 +37,10 @@ Sound::Sound()
 
 void Sound::begin() {
     ESP_LOGI(TAG, "Initializing Sound system...");
-    engine::gAudio.setSampleRate(static_cast<float>(sampleRate));
 
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
 
-    esp_err_t ret = i2s_new_channel(&chan_cfg, &tx_handle, NULL);
+    esp_err_t ret = i2s_new_channel(&chan_cfg, &tx_handle, nullptr);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to create I2S channel: %s", esp_err_to_name(ret));
         return;
@@ -71,27 +73,26 @@ Sound::~Sound() {
     }
 }
 
-void Sound::setSampleRate(int rate) {
+void Sound::setSampleRate(const int rate) {
     sampleRate = rate;
     engine::gAudio.setSampleRate(static_cast<float>(sampleRate));
     ESP_LOGI(TAG, "Sample rate set to: %d Hz", rate);
 }
 
 void Sound::setAmplitude(float amplitude) {
-    if (amplitude > 1.0f) amplitude = 1.0f;
-    else if (amplitude < 0.0f) amplitude = 0.0f;
+    amplitude = synth::dsp::clamp(amplitude, 0.0f, 1.0f);
     masterAmplitude = amplitude;
     ESP_LOGI(TAG, "Master amplitude set to: %.2f", masterAmplitude);
 }
 
-void Sound::ensureBuffer_(size_t frames) noexcept {
+void Sound::ensureBuffer_(const size_t frames) noexcept {
     if (frames <= i2sBufFrames_ && i2sBuf_) return;
     if (i2sBuf_) std::free(i2sBuf_);
     i2sBuf_ = static_cast<int16_t*>(std::malloc(frames * 2 * sizeof(int16_t)));
     i2sBufFrames_ = i2sBuf_ ? frames : 0;
 }
 
-void Sound::write(const float* mono, size_t frames) {
+void Sound::write(const float* mono, const size_t frames) {
     if (!tx_handle || !mono || frames == 0) return;
 
     ensureBuffer_(frames);
@@ -102,20 +103,20 @@ void Sound::write(const float* mono, size_t frames) {
         float s = mono[i] * amp;
         if (s > 1.0f) s = 1.0f;
         else if (s < -1.0f) s = -1.0f;
-        const int16_t v = static_cast<int16_t>(s * 32767.0f);
+        const auto v = static_cast<int16_t>(s * 32767.0f);
         i2sBuf_[2 * i]     = v;
         i2sBuf_[2 * i + 1] = v;
     }
 
     size_t bytes_written;
-    esp_err_t ret = i2s_channel_write(tx_handle, i2sBuf_, frames * 2 * sizeof(int16_t),
+    const esp_err_t ret = i2s_channel_write(tx_handle, i2sBuf_, frames * 2 * sizeof(int16_t),
                                       &bytes_written, portMAX_DELAY);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "I2S write failed: %s", esp_err_to_name(ret));
     }
 }
 
-void Sound::writeStereoInterleaved(const float* stereoLR, size_t frames) {
+void Sound::writeStereoInterleaved(const float* stereoLR, const size_t frames) {
     if (!tx_handle || !stereoLR || frames == 0) return;
 
     ensureBuffer_(frames);
@@ -123,16 +124,14 @@ void Sound::writeStereoInterleaved(const float* stereoLR, size_t frames) {
 
     const float amp = masterAmplitude;
     for (size_t i = 0; i < frames; ++i) {
-        float l = stereoLR[2 * i]     * amp;
-        float r = stereoLR[2 * i + 1] * amp;
-        if (l > 1.0f) l = 1.0f; else if (l < -1.0f) l = -1.0f;
-        if (r > 1.0f) r = 1.0f; else if (r < -1.0f) r = -1.0f;
+        const float l = synth::dsp::clamp(stereoLR[2 * i]     * amp, -1.0f, 1.0f);
+        const float r = synth::dsp::clamp(stereoLR[2 * i + 1] * amp, -1.0f, 1.0f);
         i2sBuf_[2 * i]     = static_cast<int16_t>(l * 32767.0f);
         i2sBuf_[2 * i + 1] = static_cast<int16_t>(r * 32767.0f);
     }
 
     size_t bytes_written;
-    esp_err_t ret = i2s_channel_write(tx_handle, i2sBuf_, frames * 2 * sizeof(int16_t),
+    const esp_err_t ret = i2s_channel_write(tx_handle, i2sBuf_, frames * 2 * sizeof(int16_t),
                                       &bytes_written, portMAX_DELAY);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "I2S write failed: %s", esp_err_to_name(ret));

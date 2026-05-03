@@ -26,7 +26,7 @@ public:
         }
     }
 
-    ActiveKind activeKind() const noexcept { return activeKind_; }
+    [[nodiscard]] ActiveKind activeKind() const noexcept { return activeKind_; }
 
     IInstrument* current() noexcept {
         return activeKind_ == ActiveKind::Drums
@@ -34,17 +34,17 @@ public:
                    : static_cast<IInstrument*>(&modular_);
     }
 
-    uint8_t defaultMaxVoices() const noexcept {
+    [[nodiscard]] uint8_t defaultMaxVoices() const noexcept {
         return activeKind_ == ActiveKind::Drums ? drums_.defaultMaxVoices()
                                                : modular_.defaultMaxVoices();
     }
 
-    synth::voice::SameNoteMode defaultSameNoteMode() const noexcept {
+    [[nodiscard]] synth::voice::SameNoteMode defaultSameNoteMode() const noexcept {
         return activeKind_ == ActiveKind::Drums ? drums_.defaultSameNoteMode()
                                                : modular_.defaultSameNoteMode();
     }
 
-    void onVoiceStart(uint8_t v, const VoiceContext& ctx) noexcept {
+    void onVoiceStart(const uint8_t v, const VoiceContext& ctx) noexcept {
         if (activeKind_ == ActiveKind::Drums) {
             drums_.onVoiceStart(v, ctx);
         } else {
@@ -52,7 +52,7 @@ public:
         }
     }
 
-    void onVoiceStop(uint8_t v) noexcept {
+    void onVoiceStop(const uint8_t v) noexcept {
         if (activeKind_ == ActiveKind::Drums) {
             drums_.onVoiceStop(v);
         } else {
@@ -60,7 +60,7 @@ public:
         }
     }
 
-    void renderAddVoice(uint8_t v, float* outMono, uint64_t numSamples) noexcept {
+    void renderAddVoice(const uint8_t v, float* outMono, const uint64_t numSamples) noexcept {
         if (activeKind_ == ActiveKind::Drums) {
             drums_.renderAddVoice(v, outMono, numSamples);
         } else {
@@ -68,11 +68,11 @@ public:
         }
     }
 
-    float voicePan(uint8_t v) const noexcept {
+    [[nodiscard]] float voicePan(const uint8_t v) const noexcept {
         return activeKind_ == ActiveKind::Drums ? drums_.voicePan(v) : modular_.voicePan(v);
     }
 
-    bool setParam(uint16_t paramId, float value) noexcept {
+    bool setParam(const uint16_t paramId, const float value) noexcept {
         return activeKind_ == ActiveKind::Drums ? drums_.setParam(paramId, value)
                                                : modular_.setParam(paramId, value);
     }

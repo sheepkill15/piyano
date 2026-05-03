@@ -12,6 +12,7 @@
 #include "synth/modules/Lfo.h"
 #include "synth/modules/Noise.h"
 #include "synth/modules/Oscillator.h"
+#include "synth/modules/Shaper.h"
 
 // Generic instrument: a self-contained per-voice DSP graph. setPatch() unpacks a
 // synth::patch::Patch once into the per-voice modules (Adsr, Lfo, Svf, ...) and
@@ -125,8 +126,12 @@ private:
 
     void renderSynth_(uint8_t voiceIdx, float* out, uint64_t n) noexcept;
 
-    void recomputeOscDp_(VoiceState& s, const float vibSemis[MAX_LFOS], float invSr,
+    void recomputeOscDp_(const VoiceState& s, const float vibSemis[MAX_LFOS], float invSr,
                          float oscFreq[MAX_OSCS], float oscDp[MAX_OSCS]) const noexcept;
+
+    float renderOneOsc_(VoiceState& s, uint8_t oi, float dp) const noexcept;
+    float tickResonator_(VoiceState& s, float* resoBuf) noexcept;
+    void updateFilterCutoffs_(VoiceState& s, const float lfoBuf[]) const noexcept;
 
     // ===== Instrument-level config (built by setPatch()) =====
     const char* name_ = "Init";
@@ -152,8 +157,7 @@ private:
     float noiseLevel_ = 0.0f;
 
     bool driveEnabled_ = false;
-    float drivePreGain_ = 1.0f;
-    float drivePostGain_ = 1.0f;
+    synth::modules::Drive outDrive_{};
 
     bool resonatorEnabled_ = false;
     float resoFeedback_ = 0.998f;

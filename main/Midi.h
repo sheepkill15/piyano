@@ -8,8 +8,8 @@ public:
     Midi();
     ~Midi();
     
-    void begin();
-    void update();
+    void begin() const;
+    void update() const;
     
     void onMidiMessage(void (*callback)(const uint8_t (&)[4]));
     void onDeviceConnected(void (*callback)());

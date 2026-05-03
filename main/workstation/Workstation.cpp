@@ -8,7 +8,7 @@ Workstation::Workstation(SynthEngine& synth, InstrumentManager& instruments, Sou
     , instruments_(instruments)
     , sound_(sound) {}
 
-void Workstation::registerPreset_(PatchFactory factory) noexcept {
+void Workstation::registerPreset_(const PatchFactory factory) noexcept {
     if (!factory) return;
     if (presetCount_ >= MAX_PRESETS) return;
     presets_[presetCount_++] = factory();
@@ -41,11 +41,11 @@ void Workstation::begin() noexcept {
     if (presetCount_ > 0) loadPreset_(0);
 }
 
-void Workstation::handleControlChange(uint8_t channel, uint8_t control, uint8_t value) noexcept {
+void Workstation::handleControlChange(const uint8_t channel, const uint8_t control, const uint8_t value) noexcept {
     if (channel != 15) return;
 
     if (control == 20) {
-        synth_.setParam(Params::MasterGain, value / 127.0f);
+        synth_.setParam(Params::MasterGain, static_cast<float>(value) / 127.0f);
         return;
     }
 
@@ -54,16 +54,16 @@ void Workstation::handleControlChange(uint8_t channel, uint8_t control, uint8_t 
         return;
     }
 
-    if (control == 12) { synth_.setParam(Params::Attack,  value / 127.0f); return; }
-    if (control == 13) { synth_.setParam(Params::Decay,   value / 127.0f); return; }
-    if (control == 14) { synth_.setParam(Params::Sustain, value / 127.0f); return; }
-    if (control == 15) { synth_.setParam(Params::Release, value / 127.0f); return; }
+    if (control == 12) { synth_.setParam(Params::Attack,  static_cast<float>(value) / 127.0f); return; }
+    if (control == 13) { synth_.setParam(Params::Decay,   static_cast<float>(value) / 127.0f); return; }
+    if (control == 14) { synth_.setParam(Params::Sustain, static_cast<float>(value) / 127.0f); return; }
+    if (control == 15) { synth_.setParam(Params::Release, static_cast<float>(value) / 127.0f); return; }
 
-    if (control == 16) { synth_.setParam(Params::FmModIndex, value / 127.0f); return; }
-    if (control == 17) { synth_.setParam(Params::FmModRatio, value / 127.0f); return; }
+    if (control == 16) { synth_.setParam(Params::FmModIndex, static_cast<float>(value) / 127.0f); return; }
+    if (control == 17) { synth_.setParam(Params::FmModRatio, static_cast<float>(value) / 127.0f); return; }
 }
 
-void Workstation::handleProgramChange(uint8_t /*channel*/, uint8_t program) noexcept {
+void Workstation::handleProgramChange(uint8_t /*channel*/, const uint8_t program) noexcept {
     if (presetCount_ == 0) return;
     loadPreset_(static_cast<uint8_t>(program % presetCount_));
 }
@@ -73,7 +73,7 @@ void Workstation::nextPreset_() noexcept {
     loadPreset_(static_cast<uint8_t>((currentPreset_ + 1) % presetCount_));
 }
 
-void Workstation::loadPreset_(uint8_t presetIndex) noexcept {
+void Workstation::loadPreset_(const uint8_t presetIndex) noexcept {
     if (presetCount_ == 0) return;
     currentPreset_ = static_cast<uint8_t>(presetIndex % presetCount_);
 
@@ -84,7 +84,7 @@ void Workstation::loadPreset_(uint8_t presetIndex) noexcept {
     applyAmpEnv_(patch);
 }
 
-void Workstation::applyAmpEnv_(const synth::patch::Patch& patch) noexcept {
+void Workstation::applyAmpEnv_(const synth::patch::Patch& patch) const noexcept {
     if (patch.envCount == 0) return;
     const auto& e = patch.envs[0];
     synth_.setParam(Params::Attack,  e.attack);

@@ -27,8 +27,8 @@ void handleMidiMessage(const uint8_t (&data)[4]);
 
 TaskHandle_t soundTaskHandle;
 
-void soundTask(void *parameter) {
-    const int bufferSize = 256;
+[[noreturn]] void soundTask(void *parameter) {
+    constexpr int bufferSize = 256;
     static float stereo[bufferSize * 2];
 
     for (;;) {
@@ -37,7 +37,7 @@ void soundTask(void *parameter) {
     }
 }
 
-extern "C" void app_main()
+extern "C" [[noreturn]] void app_main()
 {
     ESP_LOGI(TAG, "Piyano - MIDI Piano with I2S Audio");
 
@@ -64,7 +64,7 @@ extern "C" void app_main()
         soundTask,          // task function
         "SoundTask",        // name
         8192,               // stack size
-        NULL,               // parameters
+        nullptr,               // parameters
         18,                 // priority: keep above UI/MIDI so render meets realtime
         &soundTaskHandle,   // handle
         1                   // core number (0 or 1)
@@ -73,12 +73,12 @@ extern "C" void app_main()
 
     // Main loop
     int64_t lastUpdate = 0;
-    while (1) {
+    while (true) {
         midi.update();
-        struct timeval tv_now;
-        gettimeofday(&tv_now, NULL);
-        int64_t time_us = (int64_t)tv_now.tv_sec * 1000000L + (int64_t)tv_now.tv_usec;
-        synthEngine.update((time_us - lastUpdate) / 1000000.0f);
+        timeval tv_now{};
+        gettimeofday(&tv_now, nullptr);
+        int64_t time_us = tv_now.tv_sec * 1000000L + static_cast<int64_t>(tv_now.tv_usec);
+        synthEngine.update(static_cast<float>(time_us - lastUpdate) / 1000000.0f);
         lastUpdate = time_us;
         vTaskDelay(pdMS_TO_TICKS(1));
     }
@@ -124,8 +124,8 @@ void handleMidiMessage(const uint8_t (&data)[4]) {
     }
 }
 
-void onMidiNoteOn(uint8_t channel, uint8_t pitch, uint8_t velocity) {
-    float amplitude = velocity / 127.0f;
+void onMidiNoteOn(const uint8_t channel, const uint8_t pitch, const uint8_t velocity) {
+    const float amplitude = static_cast<float>(velocity) / 127.0f;
     if(velocity == 0) {
         synthEngine.noteOff(pitch);
         return;
@@ -133,6 +133,6 @@ void onMidiNoteOn(uint8_t channel, uint8_t pitch, uint8_t velocity) {
     synthEngine.noteOn(pitch, amplitude);
 }
 
-void onMidiNoteOff(uint8_t channel, uint8_t pitch) {
+void onMidiNoteOff(const uint8_t channel, const uint8_t pitch) {
     synthEngine.noteOff(pitch);
 }

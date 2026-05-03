@@ -4,10 +4,10 @@
  * https://github.com/enudenki/esp32-usb-host-midi-library.git
  */
 #include "UsbMidi.h"
-#include <string.h>
+#include <cstring>
 #include "esp_log.h"
 
-static const char *TAG = "USBMIDI";
+static auto TAG = "USBMIDI";
 
 UsbMidi::UsbMidi()
     : _clientHandle(nullptr),
@@ -22,8 +22,8 @@ UsbMidi::UsbMidi()
       _deviceConnectedCallback(nullptr),
       _deviceDisconnectedCallback(nullptr)
 {
-    for (int i = 0; i < NUM_MIDI_IN_TRANSFERS; ++i) {
-        _midiInTransfers[i] = nullptr;
+    for (auto & _midiInTransfer : _midiInTransfers) {
+        _midiInTransfer = nullptr;
     }
 }
 
@@ -46,7 +46,7 @@ void UsbMidi::begin()
         ESP_LOGE(TAG, "Failed to create MIDI OUT queue");
     }
 
-    const usb_host_config_t hostConfig = {
+    constexpr usb_host_config_t hostConfig = {
         .intr_flags = ESP_INTR_FLAG_LEVEL1,
     };
     esp_err_t err = usb_host_install(&hostConfig);
@@ -85,13 +85,12 @@ void UsbMidi::update()
     _processMidiOutQueue();
 }
 
-void UsbMidi::onMidiMessage(MidiMessageCallback callback)
+void UsbMidi::onMidiMessage(const MidiMessageCallback callback)
 {
     _midiMessageCallback = callback;
 }
 
-bool UsbMidi::sendMidiMessage(const uint8_t* message, uint8_t size)
-{
+bool UsbMidi::sendMidiMessage(const uint8_t* message, uint8_t size) const {
     if (!_midiOutQueue) return false;
     if (size == 0 || size % 4 != 0) return false;
 
@@ -113,27 +112,27 @@ bool UsbMidi::sendMidiMessage(const uint8_t* message, uint8_t size)
     return true;
 }
 
-bool UsbMidi::noteOn(uint8_t channel, uint8_t note, uint8_t velocity)
-{
-    uint8_t message[4] = { (uint8_t)MidiCin::NOTE_ON, (uint8_t)(0x90 | (channel & 0x0F)), (uint8_t)(note & 0x7F), (uint8_t)(velocity & 0x7F) };
+bool UsbMidi::noteOn(const uint8_t channel, const uint8_t note, const uint8_t velocity) const {
+    const uint8_t message[4] = { static_cast<uint8_t>(MidiCin::NOTE_ON), static_cast<uint8_t>(0x90 | (channel & 0x0F)),
+        static_cast<uint8_t>(note & 0x7F), static_cast<uint8_t>(velocity & 0x7F) };
     return sendMidiMessage(message, 4);
 }
 
-bool UsbMidi::noteOff(uint8_t channel, uint8_t note, uint8_t velocity)
-{
-    uint8_t message[4] = { (uint8_t)MidiCin::NOTE_OFF, (uint8_t)(0x80 | (channel & 0x0F)), (uint8_t)(note & 0x7F), (uint8_t)(velocity & 0x7F) };
+bool UsbMidi::noteOff(const uint8_t channel, const uint8_t note, const uint8_t velocity) const {
+    const uint8_t message[4] = { static_cast<uint8_t>(MidiCin::NOTE_OFF), static_cast<uint8_t>(0x80 | (channel & 0x0F)),
+        static_cast<uint8_t>(note & 0x7F), static_cast<uint8_t>(velocity & 0x7F) };
     return sendMidiMessage(message, 4);
 }
 
-bool UsbMidi::controlChange(uint8_t channel, uint8_t controller, uint8_t value)
-{
-    uint8_t message[4] = { (uint8_t)MidiCin::CONTROL_CHANGE, (uint8_t)(0xB0 | (channel & 0x0F)), (uint8_t)(controller & 0x7F), (uint8_t)(value & 0x7F) };
+bool UsbMidi::controlChange(const uint8_t channel, const uint8_t controller, const uint8_t value) const {
+    const uint8_t message[4] = { static_cast<uint8_t>(MidiCin::CONTROL_CHANGE), static_cast<uint8_t>(0xB0 | (channel & 0x0F)),
+        static_cast<uint8_t>(controller & 0x7F), static_cast<uint8_t>(value & 0x7F) };
     return sendMidiMessage(message, 4);
 }
 
-bool UsbMidi::programChange(uint8_t channel, uint8_t program)
-{
-    uint8_t message[4] = { (uint8_t)MidiCin::PROGRAM_CHANGE, (uint8_t)(0xC0 | (channel & 0x0F)), (uint8_t)(program & 0x7F), 0 };
+bool UsbMidi::programChange(const uint8_t channel, const uint8_t program) const {
+    const uint8_t message[4] = { static_cast<uint8_t>(MidiCin::PROGRAM_CHANGE), static_cast<uint8_t>(0xC0 | (channel & 0x0F)),
+        static_cast<uint8_t>(program & 0x7F), 0 };
     return sendMidiMessage(message, 4);
 }
 
@@ -158,7 +157,7 @@ void UsbMidi::onDeviceDisconnected(void (*callback)())
 void UsbMidi::_clientEventCallback(const usb_host_client_event_msg_t* eventMsg, void* arg)
 {
     if (arg == nullptr) return;
-    UsbMidi* instance = static_cast<UsbMidi*>(arg);
+    auto* instance = static_cast<UsbMidi*>(arg);
     instance->_handleClientEvent(eventMsg);
 }
 
@@ -273,7 +272,7 @@ void UsbMidi::_setupMidiInEndpoint(const usb_ep_desc_t* endpoint)
     for (int i = 0; i < NUM_MIDI_IN_TRANSFERS; i++) {
         if (_midiInTransfers[i] != nullptr) continue;
 
-        esp_err_t err = usb_host_transfer_alloc(endpoint->wMaxPacketSize, 0, &_midiInTransfers[i]);
+        const esp_err_t err = usb_host_transfer_alloc(endpoint->wMaxPacketSize, 0, &_midiInTransfers[i]);
         if (err == ESP_OK) {
             _midiInTransfers[i]->device_handle = _deviceHandle;
             _midiInTransfers[i]->bEndpointAddress = endpoint->bEndpointAddress;
@@ -291,7 +290,7 @@ void UsbMidi::_setupMidiOutEndpoint(const usb_ep_desc_t* endpoint)
 {
     if (_midiOutTransfer != nullptr) return;
 
-    esp_err_t err = usb_host_transfer_alloc(endpoint->wMaxPacketSize, 0, &_midiOutTransfer);
+    const esp_err_t err = usb_host_transfer_alloc(endpoint->wMaxPacketSize, 0, &_midiOutTransfer);
     if (err == ESP_OK) {
         _midiOutTransfer->device_handle = _deviceHandle;
         _midiOutTransfer->bEndpointAddress = endpoint->bEndpointAddress;
@@ -307,7 +306,7 @@ void UsbMidi::_setupMidiOutEndpoint(const usb_ep_desc_t* endpoint)
 void UsbMidi::_midiTransferCallback(usb_transfer_t* transfer)
 {
     if (transfer == nullptr || transfer->context == nullptr) return;
-    UsbMidi* instance = static_cast<UsbMidi*>(transfer->context);
+    auto* instance = static_cast<UsbMidi*>(transfer->context);
     instance->_handleMidiTransfer(transfer);
 }
 
@@ -370,7 +369,7 @@ void UsbMidi::_processMidiOutQueue()
         return;
     }
 
-    size_t bytesToSend = 0;
+    int bytesToSend = 0;
     uint8_t tempMessage[4];
     size_t maxPacketSize = _midiOutTransfer->data_buffer_size;
 
@@ -406,10 +405,10 @@ void UsbMidi::_releaseDeviceResources()
         xQueueReset(_midiOutQueue);
     }
 
-    for (int i = 0; i < NUM_MIDI_IN_TRANSFERS; ++i) {
-        if (_midiInTransfers[i]) {
-            usb_host_transfer_free(_midiInTransfers[i]);
-            _midiInTransfers[i] = nullptr;
+    for (auto & _midiInTransfer : _midiInTransfers) {
+        if (_midiInTransfer) {
+            usb_host_transfer_free(_midiInTransfer);
+            _midiInTransfer = nullptr;
         }
     }
     if (_midiOutTransfer) {

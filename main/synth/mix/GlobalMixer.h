@@ -16,27 +16,25 @@ struct GlobalMixer {
     static constexpr float kCeil = 0.98f;
     static constexpr float kRange = kCeil - kKnee; // 0.23
 
-    synth::modules::Smoother1p gainSmoother{};
+    modules::Smoother1p gainSmoother{};
 
-    void init(float sampleRate) noexcept {
+    void init(const float sampleRate) noexcept {
         gainSmoother.setTimeConstant(0.020f, sampleRate);
         gainSmoother.reset(0.5f);
         gainSmoother.setTarget(0.5f);
     }
 
-    void setMasterGain(float g) noexcept {
-        if (g < 0.0f) g = 0.0f;
-        if (g > 4.0f) g = 4.0f;
-        gainSmoother.setTarget(g);
+    void setMasterGain(const float g) noexcept {
+        gainSmoother.setTarget(dsp::clamp(g, 0.0f, 4.0f));
     }
 
-    inline float softClip(float x) const noexcept {
-        if (x >  kKnee) return  kKnee + kRange * synth::dsp::tanhFast((x - kKnee) / kRange);
-        if (x < -kKnee) return -kKnee + kRange * synth::dsp::tanhFast((x + kKnee) / kRange);
+    static float softClip(const float x) noexcept {
+        if (x >  kKnee) return  kKnee + kRange * dsp::tanhFast((x - kKnee) / kRange);
+        if (x < -kKnee) return -kKnee + kRange * dsp::tanhFast((x + kKnee) / kRange);
         return x;
     }
 
-    void processStereo(float* interleavedLR, uint64_t nFrames) noexcept {
+    void processStereo(float* interleavedLR, const uint64_t nFrames) noexcept {
         for (uint64_t i = 0; i < nFrames; ++i) {
             const float g = gainSmoother.tick();
             interleavedLR[2 * i]     = softClip(interleavedLR[2 * i]     * g);
