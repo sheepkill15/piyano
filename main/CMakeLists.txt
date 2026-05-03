@@ -7,6 +7,7 @@ idf_component_register(
         "engine/Sound.cpp"
         "engine/AudioContext.cpp"
         "instruments/ModularInstrument.cpp"
+        "instruments/DrumKitInstrument.cpp"
         "synth/dsp/WaveTables.cpp"
         "workstation/Workstation.cpp"
     INCLUDE_DIRS 

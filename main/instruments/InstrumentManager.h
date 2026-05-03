@@ -1,24 +1,35 @@
 #pragma once
 
+#include "DrumKitInstrument.h"
 #include "IInstrument.h"
 #include "ModularInstrument.h"
 #include "Patch.h"
 
-// Owns the single live ModularInstrument. The workstation calls loadPatch() to
-// reconfigure it for the currently selected preset. There is no longer a fixed
-// table of pre-defined "instruments": every preset describes its own modules.
+// Owns modular synth and drum-kit instruments. loadPatch() routes PatchKind::DrumKit
+// to DrumKitInstrument and everything else to ModularInstrument.
 class InstrumentManager {
 public:
     InstrumentManager() noexcept = default;
 
     IInstrument* loadPatch(const synth::patch::Patch& patch) noexcept {
-        instrument_.setPatch(patch);
-        return &instrument_;
+        if (patch.kind == synth::patch::PatchKind::DrumKit) {
+            drums_.setPatch(patch);
+            active_ = &drums_;
+        } else {
+            modular_.setPatch(patch);
+            active_ = &modular_;
+        }
+        return active_;
     }
 
-    IInstrument* current() noexcept { return &instrument_; }
-    const synth::patch::Patch& currentPatch() const noexcept { return instrument_.patch(); }
+    IInstrument* current() noexcept { return active_; }
+
+    const synth::patch::Patch& currentPatch() const noexcept {
+        return active_ == &drums_ ? drums_.patch() : modular_.patch();
+    }
 
 private:
-    ModularInstrument instrument_{};
+    ModularInstrument modular_{};
+    DrumKitInstrument drums_{};
+    IInstrument* active_{&modular_};
 };

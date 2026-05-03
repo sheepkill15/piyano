@@ -7,7 +7,6 @@
 #include "Patch.h"
 
 #include "synth/modules/Adsr.h"
-#include "synth/modules/DrumVoices.h"
 #include "synth/modules/Exciter.h"
 #include "synth/modules/Filter.h"
 #include "synth/modules/Lfo.h"
@@ -78,11 +77,6 @@ private:
 
         synth::modules::ClickExciter click{};
         synth::modules::NoiseBurst burst{};
-
-        synth::modules::Kick kick{};
-        synth::modules::Snare snare{};
-        synth::modules::Hat hat{};
-        synth::patch::DrumPadKind drumKind = synth::patch::DrumPadKind::Hat;
     };
 
     void resetVoice_(uint8_t v) noexcept;
@@ -91,7 +85,6 @@ private:
     float* voiceResoBuf_(uint8_t v) noexcept;
 
     void renderSynth_(VoiceState& s, float* out, uint64_t n) noexcept;
-    void renderDrum_(VoiceState& s, float* out, uint64_t n) noexcept;
 
     synth::patch::Patch patch_{};
     VoiceState voices_[MAX_VOICES] = {};

@@ -159,7 +159,7 @@ struct Patch {
     synth::voice::SameNoteMode sameNoteMode = synth::voice::SameNoteMode::SingleVoicePerKey;
 
     // FM helpers exposed so MIDI CCs can globally scale FM character without
-    // editing the patch. ModularInstrument multiplies oscs[*].fmIndex by fmIndexScale
+    // editing the patch. The synth path multiplies oscs[*].fmIndex by fmIndexScale
     // and oscs[*].pitchSemitones for modulators by fmRatioScale.
     float fmIndexScale = 1.0f;
     float fmRatioScale = 1.0f;

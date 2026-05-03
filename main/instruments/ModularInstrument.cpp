@@ -83,6 +83,9 @@ float* ModularInstrument::voiceResoBuf_(uint8_t v) noexcept {
 }
 
 void ModularInstrument::setPatch(const synth::patch::Patch& patch) noexcept {
+    if (patch.kind == synth::patch::PatchKind::DrumKit) {
+        return;
+    }
     patch_ = patch;
     ensureResonatorBuffer_();
     for (uint8_t v = 0; v < MAX_VOICES; ++v) {
@@ -122,30 +125,6 @@ void ModularInstrument::onVoiceStart(uint8_t v, const VoiceContext& ctx) noexcep
     s.vel = ctx.velocity;
     s.note = ctx.note;
     s.keyT = clampf((static_cast<float>(ctx.note) - 21.0f) / 88.0f, 0.0f, 1.0f);
-
-    if (patch_.kind == synth::patch::PatchKind::DrumKit) {
-        const auto& kit = patch_.drumKit;
-        synth::patch::DrumPadKind kind = kit.fallback;
-        float pan = kit.fallbackPan;
-        float velScale = kit.fallbackVelScale;
-        for (uint8_t i = 0; i < kit.padCount; ++i) {
-            if (kit.pads[i].note == ctx.note) {
-                kind = kit.pads[i].kind;
-                pan = kit.pads[i].pan;
-                velScale = kit.pads[i].velScale;
-                break;
-            }
-        }
-        s.drumKind = kind;
-        s.pan = pan;
-        const float vel = clampf(ctx.velocity * velScale, 0.0f, 1.0f);
-        switch (kind) {
-            case synth::patch::DrumPadKind::Kick:  s.kick.trigger(vel);  break;
-            case synth::patch::DrumPadKind::Snare: s.snare.trigger(vel); break;
-            case synth::patch::DrumPadKind::Hat:   s.hat.trigger(vel);   break;
-        }
-        return;
-    }
 
     // Per-voice pan from patch spread (-spread..+spread alternating).
     if (patch_.panSpread > 0.0f) {
@@ -238,25 +217,7 @@ void ModularInstrument::onVoiceStop(uint8_t v) noexcept {
 void ModularInstrument::renderAddVoice(uint8_t v, float* out, uint64_t n) noexcept {
     if (v >= MAX_VOICES || !out || n == 0) return;
     VoiceState& s = voices_[v];
-    if (patch_.kind == synth::patch::PatchKind::DrumKit) {
-        renderDrum_(s, out, n);
-    } else {
-        renderSynth_(s, out, n);
-    }
-}
-
-void ModularInstrument::renderDrum_(VoiceState& s, float* out, uint64_t n) noexcept {
-    switch (s.drumKind) {
-        case synth::patch::DrumPadKind::Kick:
-            for (uint64_t i = 0; i < n; ++i) out[i] += s.kick.tick();
-            break;
-        case synth::patch::DrumPadKind::Snare:
-            for (uint64_t i = 0; i < n; ++i) out[i] += s.snare.tick();
-            break;
-        case synth::patch::DrumPadKind::Hat:
-            for (uint64_t i = 0; i < n; ++i) out[i] += s.hat.tick();
-            break;
-    }
+    renderSynth_(s, out, n);
 }
 
 void ModularInstrument::renderSynth_(VoiceState& s, float* out, uint64_t n) noexcept {
