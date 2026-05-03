@@ -179,6 +179,7 @@ inline synth::patch::Patch pianoNatural() noexcept {
     p.resonator.harmAmount = 0.15f;
 
     p.panSpread = 0.18f;
+    p.outputGain = 0.72f;
     p.maxVoices = 8;
     p.sameNoteMode = synth::voice::SameNoteMode::MultiVoicePerKey;
     return p;

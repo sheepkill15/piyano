@@ -2,16 +2,17 @@
 #define SYNTHENGINE_H
 
 #include <cstdint>
-#include "IInstrument.h"
 #include "synth/voice/VoiceAllocator.h"
 #include "synth/modules/Adsr.h"
 #include "synth/mix/GlobalMixer.h"
 
+class InstrumentManager;
+
 class SynthEngine {
     public:
-        void init(IInstrument* initialInstrument) noexcept;
+        void init(InstrumentManager* instruments) noexcept;
 
-        void switchInstrument(IInstrument* newInstrument) noexcept;
+        void bindInstruments(InstrumentManager* instruments) noexcept;
 
         void noteOn(uint8_t note, float vel) noexcept;
 
@@ -25,7 +26,7 @@ class SynthEngine {
         void update(float dt) noexcept;
 
     private:
-        IInstrument* instrument = nullptr;
+        InstrumentManager* instruments_ = nullptr;
 
         static constexpr uint8_t MAX_VOICES = 8;
         synth::voice::VoiceAllocator<MAX_VOICES> allocator_ = {};

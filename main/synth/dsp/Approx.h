@@ -29,4 +29,11 @@ inline float exp2Fast(float x) noexcept {
     return u.f;
 }
 
+// SVF/Chamberlin prewarp g = tan(pi*fc/fs). Padé (3,3) form; fc clamped to
+// ~0.45*sr keeps w < 1.42 so denominator stays well behaved vs libm tanf.
+inline float tanPrewarpFast(float w) noexcept {
+    const float w2 = w * w;
+    return (w * (15.0f - w2)) / (15.0f - 6.0f * w2);
+}
+
 } // namespace synth::dsp

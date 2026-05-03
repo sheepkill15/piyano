@@ -1,41 +1,41 @@
 #include "SynthEngine.h"
+#include "instruments/InstrumentManager.h"
 #include "engine/AudioContext.h"
 #include <cstring>
 #include <cmath>
 
 namespace {
 constexpr uint64_t kBlockSize = 256;
-// Per-voice headroom so several simultaneous voices don't slam the limiter.
-// 8-voice full-vel chord sums to ~MAX_VOICES * kVoiceGain in mono ~= 2.0 worst-case,
-// landing near the soft-knee but not hard-clipping.
-constexpr float kVoiceGain = 0.5f;
+// ~1/(3..4) per voice keeps 3–4 note chords under the soft limiter knee with
+// resonant patches; still loud enough at unity master.
+constexpr float kVoiceGain = 0.28f;
 }
 
-void SynthEngine::init(IInstrument* initialInstrument) noexcept {
-    instrument = initialInstrument;
+void SynthEngine::init(InstrumentManager* instruments) noexcept {
+    instruments_ = instruments;
     allocator_.reset();
     for (auto& e : ampEnv_) e.reset();
     for (auto& v : voiceVelocity_) v = 0.0f;
     mixer_.init(engine::gAudio.sampleRate);
-    if (instrument) {
-        allocator_.setMaxVoices(instrument->defaultMaxVoices());
-        sameNoteMode_ = instrument->defaultSameNoteMode();
+    if (instruments_) {
+        allocator_.setMaxVoices(instruments_->defaultMaxVoices());
+        sameNoteMode_ = instruments_->defaultSameNoteMode();
     }
 }
 
-void SynthEngine::switchInstrument(IInstrument* newInstrument) noexcept {
-    instrument = newInstrument;
+void SynthEngine::bindInstruments(InstrumentManager* instruments) noexcept {
+    instruments_ = instruments;
     allocator_.reset();
     for (auto& e : ampEnv_) e.reset();
     for (auto& v : voiceVelocity_) v = 0.0f;
-    if (instrument) {
-        allocator_.setMaxVoices(instrument->defaultMaxVoices());
-        sameNoteMode_ = instrument->defaultSameNoteMode();
+    if (instruments_) {
+        allocator_.setMaxVoices(instruments_->defaultMaxVoices());
+        sameNoteMode_ = instruments_->defaultSameNoteMode();
     }
 }
 
 void SynthEngine::noteOn(uint8_t note, float vel) noexcept {
-    if (!instrument) return;
+    if (!instruments_) return;
     synth::voice::NoteEvent ev;
     ev.note = note;
     ev.velocity = vel;
@@ -49,15 +49,15 @@ void SynthEngine::noteOn(uint8_t note, float vel) noexcept {
     ctx.note = note;
     ctx.velocity = vel;
     ctx.frequency = ev.frequency;
-    instrument->onVoiceStart(v, ctx);
+    instruments_->onVoiceStart(v, ctx);
 }
 
 void SynthEngine::noteOff(uint8_t note) noexcept {
-    if (!instrument) return;
+    if (!instruments_) return;
     const uint8_t v = allocator_.noteOff(note, sameNoteMode_);
     if (v == synth::voice::kInvalidVoice) return;
     ampEnv_[v].noteOff();
-    instrument->onVoiceStop(v);
+    instruments_->onVoiceStop(v);
 }
 
 bool SynthEngine::setParam(uint16_t paramId, float value) noexcept {
@@ -80,12 +80,12 @@ bool SynthEngine::setParam(uint16_t paramId, float value) noexcept {
         default:
             break;
     }
-    return instrument ? instrument->setParam(paramId, value) : false;
+            return instruments_ ? instruments_->setParam(paramId, value) : false;
 }
 
 void SynthEngine::render(float* stereoLR, uint64_t nFrames) noexcept {
     std::memset(stereoLR, 0, static_cast<size_t>(nFrames) * 2 * sizeof(float));
-    if (!instrument) return;
+    if (!instruments_) return;
 
     const float dtPerSample = engine::gAudio.invSampleRate;
 
@@ -109,14 +109,14 @@ void SynthEngine::render(float* stereoLR, uint64_t nFrames) noexcept {
             }
 
             std::memset(voiceTmp, 0, static_cast<size_t>(block) * sizeof(float));
-            instrument->renderAddVoice(v, voiceTmp, block);
+            instruments_->renderAddVoice(v, voiceTmp, block);
 
             // Velocity-aware gain (a bit of velocity sensitivity baked into the engine).
             const float vel = voiceVelocity_[v];
             const float velGain = 0.45f + 0.55f * vel;
 
             // Equal-power pan
-            float pan = instrument->voicePan(v);
+            float pan = instruments_->voicePan(v);
             if (pan < -1.0f) pan = -1.0f;
             if (pan > 1.0f) pan = 1.0f;
             const float panAng = (pan + 1.0f) * 0.25f * static_cast<float>(M_PI); // 0..pi/2

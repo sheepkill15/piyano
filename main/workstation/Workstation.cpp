@@ -79,8 +79,8 @@ void Workstation::loadPreset_(uint8_t presetIndex) noexcept {
 
     const synth::patch::Patch& patch = presets_[currentPreset_];
 
-    IInstrument* inst = instruments_.loadPatch(patch);
-    synth_.switchInstrument(inst);
+    instruments_.loadPatch(patch);
+    synth_.bindInstruments(&instruments_);
     applyAmpEnv_(patch);
 }
 

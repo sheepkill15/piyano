@@ -11,12 +11,10 @@ class DrumKitInstrument : public IInstrument {
 public:
     void setPatch(const synth::patch::Patch& patch) noexcept;
 
-    const synth::patch::Patch& patch() const noexcept { return patch_; }
-
-    const char* name() const noexcept override { return patch_.name; }
-    uint8_t defaultMaxVoices() const noexcept override { return patch_.maxVoices; }
+    const char* name() const noexcept override { return name_; }
+    uint8_t defaultMaxVoices() const noexcept override { return maxVoices_; }
     synth::voice::SameNoteMode defaultSameNoteMode() const noexcept override {
-        return patch_.sameNoteMode;
+        return sameNoteMode_;
     }
 
     void onVoiceStart(uint8_t v, const VoiceContext& ctx) noexcept override;
@@ -43,9 +41,11 @@ private:
         DrumBody body{};
     };
 
-    void rebuildNoteTable_() noexcept;
+    const char* name_ = "Init";
+    uint8_t maxVoices_ = 8;
+    synth::voice::SameNoteMode sameNoteMode_ =
+        synth::voice::SameNoteMode::SingleVoicePerKey;
 
-    synth::patch::Patch patch_{};
     PadResolve notePad_[128]{};
     Voice voices_[MAX_VOICES]{};
 };

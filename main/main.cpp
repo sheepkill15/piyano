@@ -28,7 +28,7 @@ void handleMidiMessage(const uint8_t (&data)[4]);
 TaskHandle_t soundTaskHandle;
 
 void soundTask(void *parameter) {
-    const int bufferSize = 1024;
+    const int bufferSize = 256;
     static float stereo[bufferSize * 2];
 
     for (;;) {
@@ -54,7 +54,7 @@ extern "C" void app_main()
     synth::dsp::initWaveTables();
     sound.begin();
     engine::gAudio.setSampleRate(static_cast<float>(sound.sampleRate));
-    synthEngine.init(manager.current());
+    synthEngine.init(&manager);
     workstation.begin();
     
     // Initialize MIDI with custom handler
@@ -63,9 +63,9 @@ extern "C" void app_main()
     xTaskCreatePinnedToCore(
         soundTask,          // task function
         "SoundTask",        // name
-        4096,               // stack size
+        8192,               // stack size
         NULL,               // parameters
-        1,                  // priority (1–5; higher = more priority)
+        18,                 // priority: keep above UI/MIDI so render meets realtime
         &soundTaskHandle,   // handle
         1                   // core number (0 or 1)
       );

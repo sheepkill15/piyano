@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <cmath>
 
+#include "synth/dsp/Approx.h"
+
 namespace synth::modules {
 
 struct OnePoleLP {
@@ -43,7 +45,7 @@ struct Svf {
         if (resonance > 1.0f) resonance = 1.0f;
 
         const float w = static_cast<float>(M_PI) * (cutoffHz / sampleRate);
-        g = tanf(w);
+        g = synth::dsp::tanPrewarpFast(w);
         // Map 0..1 to k (damping): k=2/Q, Q ~ 0.5..12
         const float q = 0.5f + resonance * (12.0f - 0.5f);
         k = 2.0f / q;

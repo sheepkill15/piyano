@@ -19,3 +19,10 @@ idf_component_register(
         driver
         usb
 )
+
+# Hot path: prioritize throughput over size on Xtensa.
+target_compile_options(${COMPONENT_LIB} PRIVATE
+    -O3
+    -ffast-math
+    -fno-math-errno
+)
