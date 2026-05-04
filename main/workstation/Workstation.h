@@ -1,7 +1,9 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 
+#include "synth/Constants.h"
 #include "engine/SynthEngine.h"
 #include "engine/Sound.h"
 #include "instruments/InstrumentManager.h"
@@ -34,8 +36,8 @@ private:
     InstrumentManager& instruments_;
     Sound& sound_;
 
-    static constexpr uint8_t MAX_PRESETS = 16;
-    synth::patch::Patch presets_[MAX_PRESETS] = {};
+    static constexpr uint8_t MAX_PRESETS = synth::cfg::kWorkstationMaxPresets;
+    std::array<synth::patch::Patch, MAX_PRESETS> presets_{};
     uint8_t presetCount_ = 0;
     uint8_t currentPreset_ = 0;
 };

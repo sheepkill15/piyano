@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cmath>
 
+#include "synth/Constants.h"
 #include "synth/dsp/Approx.h"
 #include "synth/modules/Smoother.h"
 
@@ -12,9 +13,9 @@ struct GlobalMixer {
     // Soft-knee limiter: fully transparent below kKnee, smooth tanh saturation
     // between kKnee and kCeil, asymptote at kCeil. Avoids the audible distortion
     // a global tanh produces in the "normal" signal range.
-    static constexpr float kKnee = 0.75f;
-    static constexpr float kCeil = 0.98f;
-    static constexpr float kRange = kCeil - kKnee; // 0.23
+    static constexpr float kKnee = cfg::kMixerLimiterKnee;
+    static constexpr float kCeil = cfg::kMixerLimiterCeil;
+    static constexpr float kRange = kCeil - kKnee;
 
     modules::Smoother1p gainSmoother{};
 

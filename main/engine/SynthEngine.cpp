@@ -1,15 +1,15 @@
 #include "SynthEngine.h"
 #include "instruments/InstrumentManager.h"
 #include "engine/AudioContext.h"
+#include "synth/Constants.h"
 #include "synth/dsp/Util.h"
 #include "workstation/Params.h"
+#include <array>
 #include <cstring>
 
 namespace {
-constexpr uint64_t kBlockSize = 256;
-// ~1/(3..4) per voice keeps 3–4 note chords under the soft limiter knee with
-// resonant patches; still loud enough at unity master.
-constexpr float kVoiceGain = 0.28f;
+constexpr uint64_t kBlockSize = synth::cfg::kAudioRenderBlockSamples;
+constexpr float kVoiceGain = synth::cfg::kEngineVoiceGain;
 }
 
 void SynthEngine::init(InstrumentManager* instruments) noexcept {
@@ -90,8 +90,8 @@ void SynthEngine::render(float* stereoLR, const uint64_t nFrames) noexcept {
 
     const float dtPerSample = engine::gAudio.invSampleRate;
 
-    static float voiceTmp[kBlockSize];
-    static float envBuf[kBlockSize];
+    static std::array<float, kBlockSize> voiceTmp;
+    static std::array<float, kBlockSize> envBuf;
 
     uint64_t offset = 0;
     while (offset < nFrames) {
@@ -109,8 +109,8 @@ void SynthEngine::render(float* stereoLR, const uint64_t nFrames) noexcept {
                 // Quick fade-out to zero (silence the tail to avoid clicks)
             }
 
-            std::memset(voiceTmp, 0, static_cast<size_t>(block) * sizeof(float));
-            instruments_->renderAddVoice(v, voiceTmp, block);
+            std::memset(voiceTmp.data(), 0, static_cast<size_t>(block) * sizeof(float));
+            instruments_->renderAddVoice(v, voiceTmp.data(), block);
 
             // Velocity-aware gain (a bit of velocity sensitivity baked into the engine).
             const float vel = voiceVelocity_[v];

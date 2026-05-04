@@ -1,19 +1,22 @@
 #pragma once
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+
+#include "synth/Constants.h"
 
 namespace synth::dsp {
 
 // ---------------------------------------------------------------------------
 // Sine wavetable: 2048 samples + 1 wrap entry, linear interpolation.
 // ---------------------------------------------------------------------------
-constexpr int kSineBits = 11;
-constexpr int kSineSize = 1 << kSineBits;        // 2048
-constexpr int kSineMask = kSineSize - 1;
+constexpr int kSineBits = cfg::kSineTableBits;
+constexpr int kSineSize = cfg::kSineTableSize;
+constexpr int kSineMask = cfg::kSineTableMask;
 
-extern float gSineTable[kSineSize + 1];
+extern std::array<float, kSineSize + 1> gSineTable;
 
 // ---------------------------------------------------------------------------
 // Bandlimited saw mipmap: one table per ~octave, sized for the highest
@@ -21,12 +24,12 @@ extern float gSineTable[kSineSize + 1];
 // at 44.1 kHz, safe for slightly higher rates because of the half-octave
 // headroom). 1024 samples + wrap, linear interpolation.
 // ---------------------------------------------------------------------------
-constexpr int kSawTables = 10;
-constexpr int kSawTableSize = 1024;
-constexpr int kSawTableMask = kSawTableSize - 1;
+constexpr int kSawTables = cfg::kSawMipCount;
+constexpr int kSawTableSize = cfg::kSawTableSamples;
+constexpr int kSawTableMask = cfg::kSawTableMask;
 
-extern float gSawTable[kSawTables][kSawTableSize + 1];
-extern const float gSawTableMaxFreq[kSawTables];
+extern std::array<std::array<float, kSawTableSize + 1>, kSawTables> gSawTable;
+extern const std::array<float, kSawTables> gSawTableMaxFreq;
 
 void initWaveTables() noexcept;
 
@@ -43,8 +46,7 @@ inline float sineLU(const float phase01) noexcept {
 
 // Sine for an arbitrary radians angle (FM-style modulated phase). Handles wrap.
 inline float sineLURad(const float angleRad) noexcept {
-    constexpr float kInv2Pi = 0.15915494309189535f;
-    float p = angleRad * kInv2Pi;
+    float p = angleRad * cfg::kInv2Pi;
     p -= floorf(p);
     return sineLU(p);
 }
@@ -64,7 +66,7 @@ inline float sawLU(const int tableIdx, const float phase01) noexcept {
     const int i = static_cast<int>(idxF);
     const float frac = idxF - static_cast<float>(i);
     const int i0 = i & kSawTableMask;
-    const float* tbl = gSawTable[tableIdx];
+    const float* tbl = gSawTable[static_cast<std::size_t>(tableIdx)].data();
     const float a = tbl[i0];
     const float b = tbl[i0 + 1];
     return a + (b - a) * frac;

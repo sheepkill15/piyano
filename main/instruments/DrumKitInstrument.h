@@ -1,24 +1,26 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <variant>
 
 #include "IInstrument.h"
 #include "Patch.h"
+#include "synth/Constants.h"
 #include "synth/modules/DrumVoices.h"
 
 class DrumKitInstrument : public IInstrument {
 public:
     void setPatch(const synth::patch::Patch& patch) noexcept;
 
-    const char* name() const noexcept override { return name_; }
-    uint8_t defaultMaxVoices() const noexcept override { return maxVoices_; }
-    synth::voice::SameNoteMode defaultSameNoteMode() const noexcept override {
+    [[nodiscard]] const char* name() const noexcept override { return name_; }
+    [[nodiscard]] uint8_t defaultMaxVoices() const noexcept override { return maxVoices_; }
+    [[nodiscard]] synth::voice::SameNoteMode defaultSameNoteMode() const noexcept override {
         return sameNoteMode_;
     }
 
     void onVoiceStart(uint8_t v, const VoiceContext& ctx) noexcept override;
-    void onVoiceStop(uint8_t v) noexcept override { (void)v; }
+    void onVoiceStop(const uint8_t v) noexcept override { (void)v; }
     void renderAddVoice(uint8_t v, float* outMono, uint64_t numSamples) noexcept override;
     float voicePan(uint8_t v) const noexcept override;
 
@@ -46,6 +48,6 @@ private:
     synth::voice::SameNoteMode sameNoteMode_ =
         synth::voice::SameNoteMode::SingleVoicePerKey;
 
-    PadResolve notePad_[128]{};
-    Voice voices_[MAX_VOICES]{};
+    std::array<PadResolve, synth::cfg::kMidiNoteCount> notePad_{};
+    std::array<Voice, MAX_VOICES> voices_{};
 };

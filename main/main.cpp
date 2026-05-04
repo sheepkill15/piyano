@@ -7,8 +7,11 @@
 #include "engine/SynthEngine.h"
 #include "engine/Sound.h"
 #include "engine/AudioContext.h"
+#include "synth/Constants.h"
 #include "synth/dsp/WaveTables.h"
 #include "workstation/Workstation.h"
+#include <array>
+#include <cstddef>
 #include <cmath>
 
 static const char *TAG = "PIYANO";
@@ -23,17 +26,17 @@ Workstation workstation(synthEngine, manager, sound);
 // MIDI callback functions
 void onMidiNoteOn(uint8_t channel, uint8_t pitch, uint8_t velocity);
 void onMidiNoteOff(uint8_t channel, uint8_t pitch);
-void handleMidiMessage(const uint8_t (&data)[4]);
+void handleMidiMessage(const std::array<uint8_t, 4>& data);
 
 TaskHandle_t soundTaskHandle;
 
 [[noreturn]] void soundTask(void *parameter) {
-    constexpr int bufferSize = 256;
-    static float stereo[bufferSize * 2];
+    constexpr auto bufferSize = static_cast<int>(synth::cfg::kAudioRenderBlockSamples);
+    static std::array<float, synth::cfg::kAudioRenderBlockSamples * 2> stereo;
 
     for (;;) {
-        synthEngine.render(stereo, bufferSize);
-        sound.writeStereoInterleaved(stereo, bufferSize);
+        synthEngine.render(stereo.data(), static_cast<uint64_t>(bufferSize));
+        sound.writeStereoInterleaved(stereo.data(), static_cast<size_t>(bufferSize));
     }
 }
 
@@ -85,7 +88,7 @@ extern "C" [[noreturn]] void app_main()
 }
 
 // MIDI message handler
-void handleMidiMessage(const uint8_t (&data)[4]) {
+void handleMidiMessage(const std::array<uint8_t, 4>& data) {
     auto cin = static_cast<MidiCin>(data[0] & 0x0F);
     uint8_t channel = data[1] & 0x0F;
 

@@ -4,6 +4,7 @@
  * https://github.com/enudenki/esp32-usb-host-midi-library.git
  */
 #include "UsbMidi.h"
+#include <array>
 #include <cstring>
 #include "esp_log.h"
 
@@ -41,7 +42,7 @@ UsbMidi::~UsbMidi()
 
 void UsbMidi::begin()
 {
-    _midiOutQueue = xQueueCreate(MIDI_OUT_QUEUE_SIZE, sizeof(uint8_t[4]));
+    _midiOutQueue = xQueueCreate(synth::cfg::kUsbMidiOutQueueSize, sizeof(std::array<uint8_t, 4>));
     if (!_midiOutQueue) {
         ESP_LOGE(TAG, "Failed to create MIDI OUT queue");
     }
@@ -58,7 +59,7 @@ void UsbMidi::begin()
 
     const usb_host_client_config_t clientConfig = {
         .is_synchronous = false,
-        .max_num_event_msg = MAX_CLIENT_EVENT_MESSAGES,
+        .max_num_event_msg = synth::cfg::kUsbMidiMaxClientEventMessages,
         .async = { .client_event_callback = _clientEventCallback, .callback_arg = this }
     };
     err = usb_host_client_register(&clientConfig, &_clientHandle);
@@ -73,11 +74,11 @@ void UsbMidi::update()
 {
     esp_err_t err;
 
-    err = usb_host_client_handle_events(_clientHandle, USB_EVENT_POLL_TICKS);
+    err = usb_host_client_handle_events(_clientHandle, synth::cfg::kUsbMidiEventPollTicks);
     if (err != ESP_OK && err != ESP_ERR_TIMEOUT) {
         ESP_LOGE(TAG, "Error in usb_host_client_handle_events(): 0x%x", err);
     }
-    err = usb_host_lib_handle_events(USB_EVENT_POLL_TICKS, nullptr);
+    err = usb_host_lib_handle_events(synth::cfg::kUsbMidiEventPollTicks, nullptr);
     if (err != ESP_OK && err != ESP_ERR_TIMEOUT) {
         ESP_LOGE(TAG, "Error in usb_host_lib_handle_events(): 0x%x", err);
     }
@@ -113,27 +114,27 @@ bool UsbMidi::sendMidiMessage(const uint8_t* message, uint8_t size) const {
 }
 
 bool UsbMidi::noteOn(const uint8_t channel, const uint8_t note, const uint8_t velocity) const {
-    const uint8_t message[4] = { static_cast<uint8_t>(MidiCin::NOTE_ON), static_cast<uint8_t>(0x90 | (channel & 0x0F)),
+    const std::array<uint8_t, 4> message = { static_cast<uint8_t>(MidiCin::NOTE_ON), static_cast<uint8_t>(0x90 | (channel & 0x0F)),
         static_cast<uint8_t>(note & 0x7F), static_cast<uint8_t>(velocity & 0x7F) };
-    return sendMidiMessage(message, 4);
+    return sendMidiMessage(message.data(), 4);
 }
 
 bool UsbMidi::noteOff(const uint8_t channel, const uint8_t note, const uint8_t velocity) const {
-    const uint8_t message[4] = { static_cast<uint8_t>(MidiCin::NOTE_OFF), static_cast<uint8_t>(0x80 | (channel & 0x0F)),
+    const std::array<uint8_t, 4> message = { static_cast<uint8_t>(MidiCin::NOTE_OFF), static_cast<uint8_t>(0x80 | (channel & 0x0F)),
         static_cast<uint8_t>(note & 0x7F), static_cast<uint8_t>(velocity & 0x7F) };
-    return sendMidiMessage(message, 4);
+    return sendMidiMessage(message.data(), 4);
 }
 
 bool UsbMidi::controlChange(const uint8_t channel, const uint8_t controller, const uint8_t value) const {
-    const uint8_t message[4] = { static_cast<uint8_t>(MidiCin::CONTROL_CHANGE), static_cast<uint8_t>(0xB0 | (channel & 0x0F)),
+    const std::array<uint8_t, 4> message = { static_cast<uint8_t>(MidiCin::CONTROL_CHANGE), static_cast<uint8_t>(0xB0 | (channel & 0x0F)),
         static_cast<uint8_t>(controller & 0x7F), static_cast<uint8_t>(value & 0x7F) };
-    return sendMidiMessage(message, 4);
+    return sendMidiMessage(message.data(), 4);
 }
 
 bool UsbMidi::programChange(const uint8_t channel, const uint8_t program) const {
-    const uint8_t message[4] = { static_cast<uint8_t>(MidiCin::PROGRAM_CHANGE), static_cast<uint8_t>(0xC0 | (channel & 0x0F)),
+    const std::array<uint8_t, 4> message = { static_cast<uint8_t>(MidiCin::PROGRAM_CHANGE), static_cast<uint8_t>(0xC0 | (channel & 0x0F)),
         static_cast<uint8_t>(program & 0x7F), 0 };
-    return sendMidiMessage(message, 4);
+    return sendMidiMessage(message.data(), 4);
 }
 
 size_t UsbMidi::getQueueAvailableSize() const
@@ -237,7 +238,8 @@ void UsbMidi::_parseConfigDescriptor(const usb_config_desc_t* configDesc)
 
 void UsbMidi::_findAndClaimMidiInterface(const usb_intf_desc_t* intf)
 {
-    if (intf->bInterfaceClass == USB_CLASS_AUDIO && intf->bInterfaceSubClass == USB_AUDIO_SUBCLASS_MIDI_STREAMING) {
+    if (intf->bInterfaceClass == USB_CLASS_AUDIO
+        && intf->bInterfaceSubClass == synth::cfg::kUsbAudioSubclassMidiStreaming) {
         esp_err_t err = usb_host_interface_claim(_clientHandle, _deviceHandle, intf->bInterfaceNumber, intf->bAlternateSetting);
 
         if (err == ESP_OK) {
@@ -269,7 +271,7 @@ void UsbMidi::_setupMidiEndpoints(const usb_ep_desc_t* endpoint)
 
 void UsbMidi::_setupMidiInEndpoint(const usb_ep_desc_t* endpoint)
 {
-    for (int i = 0; i < NUM_MIDI_IN_TRANSFERS; i++) {
+    for (int i = 0; i < synth::cfg::kUsbMidiInTransfers; i++) {
         if (_midiInTransfers[i] != nullptr) continue;
 
         const esp_err_t err = usb_host_transfer_alloc(endpoint->wMaxPacketSize, 0, &_midiInTransfers[i]);
@@ -326,7 +328,7 @@ void UsbMidi::_handleMidiTransfer(usb_transfer_t* transfer)
 
                 // CIN 0 is for miscellaneous system messages, not musical data. We ignore them.
                 if (codeIndexNumber != 0 && _midiMessageCallback) {
-                    _midiMessageCallback(*reinterpret_cast<const uint8_t (*)[4]>(p));
+                    _midiMessageCallback(std::array<uint8_t, 4>{ p[0], p[1], p[2], p[3] });
                 }   
             }
             usb_host_transfer_submit(transfer);
@@ -370,12 +372,12 @@ void UsbMidi::_processMidiOutQueue()
     }
 
     int bytesToSend = 0;
-    uint8_t tempMessage[4];
+    std::array<uint8_t, 4> tempMessage{};
     size_t maxPacketSize = _midiOutTransfer->data_buffer_size;
 
     while (bytesToSend + 4 <= maxPacketSize && uxQueueMessagesWaiting(_midiOutQueue) > 0) {
-        if (xQueueReceive(_midiOutQueue, tempMessage, 0) == pdPASS) {
-            memcpy(_midiOutTransfer->data_buffer + bytesToSend, tempMessage, 4);
+        if (xQueueReceive(_midiOutQueue, tempMessage.data(), 0) == pdPASS) {
+            memcpy(_midiOutTransfer->data_buffer + bytesToSend, tempMessage.data(), 4);
             bytesToSend += 4;
         }
     }

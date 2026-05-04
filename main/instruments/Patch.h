@@ -1,16 +1,18 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 
+#include "synth/Constants.h"
 #include "synth/voice/VoiceAllocator.h"
 
 namespace synth::patch {
 
-constexpr uint8_t MAX_OSCS = 4;
-constexpr uint8_t MAX_ENVS = 3;
-constexpr uint8_t MAX_LFOS = 2;
-constexpr uint8_t MAX_FILTERS = 2;
-constexpr uint8_t MAX_VOICES_CAP = 8;
+constexpr uint8_t MAX_OSCS = cfg::kPatchMaxOscs;
+constexpr uint8_t MAX_ENVS = cfg::kPatchMaxEnvs;
+constexpr uint8_t MAX_LFOS = cfg::kPatchMaxLfos;
+constexpr uint8_t MAX_FILTERS = cfg::kPatchMaxFilters;
+constexpr uint8_t MAX_VOICES_CAP = cfg::kPatchMaxVoices;
 
 enum class OscShape : uint8_t { Sine, Saw, Triangle, Pulse };
 enum class FilterMode : uint8_t { LowPass, BandPass, HighPass };
@@ -119,10 +121,10 @@ struct DrumPad {
     float velScale = 1.0f;
 };
 
-constexpr uint8_t MAX_DRUM_PADS = 8;
+constexpr uint8_t MAX_DRUM_PADS = cfg::kPatchMaxDrumPads;
 
 struct DrumKitDef {
-    DrumPad pads[MAX_DRUM_PADS] = {};
+    std::array<DrumPad, MAX_DRUM_PADS> pads{};
     uint8_t padCount = 0;
     DrumPadKind fallback = DrumPadKind::Hat;
     float fallbackPan = 0.20f;
@@ -134,16 +136,16 @@ struct Patch {
     const char* name = "Init";
     PatchKind kind = PatchKind::Synth;
 
-    OscDef oscs[MAX_OSCS] = {};
+    std::array<OscDef, MAX_OSCS> oscs{};
     uint8_t oscCount = 0;
 
-    EnvDef envs[MAX_ENVS] = {};   // envs[0] is amp env; engine drives it
+    std::array<EnvDef, MAX_ENVS> envs{};   // envs[0] is amp env; engine drives it
     uint8_t envCount = 1;
 
-    LfoDef lfos[MAX_LFOS] = {};
+    std::array<LfoDef, MAX_LFOS> lfos{};
     uint8_t lfoCount = 0;
 
-    FilterDef filters[MAX_FILTERS] = {};
+    std::array<FilterDef, MAX_FILTERS> filters{};
     uint8_t filterCount = 0;       // serial chain in order
 
     NoiseDef noise = {};
@@ -155,7 +157,7 @@ struct Patch {
     float outputGain = 1.0f;
     float panSpread = 0.0f;        // -spread..+spread alternating per voice index
 
-    uint8_t maxVoices = 8;
+    uint8_t maxVoices = cfg::kPatchMaxVoices;
     voice::SameNoteMode sameNoteMode = voice::SameNoteMode::SingleVoicePerKey;
 
     // FM helpers exposed so MIDI CCs can globally scale FM character without

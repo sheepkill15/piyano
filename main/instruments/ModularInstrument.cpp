@@ -3,21 +3,23 @@
 #include "workstation/Params.h"
 #include "engine/AudioContext.h"
 
+#include "synth/Constants.h"
 #include "synth/dsp/Approx.h"
 #include "synth/dsp/Util.h"
 #include "synth/dsp/WaveTables.h"
 #include "synth/modules/Resonator.h"
 
+#include <array>
 #include <cmath>
 #include <cstring>
 
 namespace {
 
-constexpr float kTwoPi = 6.28318530717958647692f;
-constexpr float kInv2Pi = 1.0f / kTwoPi;
-constexpr float kRadiansToPhase01 = kInv2Pi;
+constexpr float kTwoPi = synth::cfg::kTwoPi;
+constexpr float kInv2Pi = synth::cfg::kInv2Pi;
+constexpr float kRadiansToPhase01 = synth::cfg::kRadiansToPhase01;
 
-constexpr uint64_t kPitchBatch = 16;
+constexpr uint64_t kPitchBatch = synth::cfg::kPitchRecomputeBatch;
 static_assert((kPitchBatch & (kPitchBatch - 1)) == 0, "kPitchBatch must be a power of two");
 
  float wrap01(const float ph) noexcept {
@@ -64,6 +66,48 @@ static_assert((kPitchBatch & (kPitchBatch - 1)) == 0, "kPitchBatch must be a pow
     return L::Sine;
 }
 
+ void buildOscRenderOrder(const std::array<synth::patch::OscDef, synth::patch::MAX_OSCS>& oscs,
+                          const uint8_t oscCount,
+                          std::array<uint8_t, synth::patch::MAX_OSCS>& outOrder) noexcept {
+    // Topological sort: fmFrom -> carrier. If cyclic/invalid, fall back to 0..N-1.
+    std::array<uint8_t, synth::patch::MAX_OSCS> indeg{};
+    std::array<std::array<uint8_t, synth::patch::MAX_OSCS>, synth::patch::MAX_OSCS> adj{};
+    std::array<uint8_t, synth::patch::MAX_OSCS> adjCount{};
+
+    for (uint8_t i = 0; i < oscCount; ++i) {
+        const int8_t from = oscs[i].fmFrom;
+        if (from >= 0 && static_cast<uint8_t>(from) < oscCount) {
+            const uint8_t u = static_cast<uint8_t>(from);
+            const uint8_t v = i;
+            adj[u][adjCount[u]++] = v;
+            indeg[v] = static_cast<uint8_t>(indeg[v] + 1);
+        }
+    }
+
+    std::array<uint8_t, synth::patch::MAX_OSCS> q{};
+    uint8_t qh = 0;
+    uint8_t qt = 0;
+    for (uint8_t i = 0; i < oscCount; ++i) {
+        if (indeg[i] == 0) q[qt++] = i;
+    }
+
+    uint8_t outN = 0;
+    while (qh != qt) {
+        const uint8_t u = q[qh++];
+        outOrder[outN++] = u;
+        for (uint8_t k = 0; k < adjCount[u]; ++k) {
+            const uint8_t v = adj[u][k];
+            indeg[v] = static_cast<uint8_t>(indeg[v] - 1);
+            if (indeg[v] == 0) q[qt++] = v;
+        }
+    }
+
+    if (outN != oscCount) {
+        for (uint8_t i = 0; i < oscCount; ++i) outOrder[i] = i;
+    }
+    for (uint8_t i = oscCount; i < synth::patch::MAX_OSCS; ++i) outOrder[i] = i;
+ }
+
 } // namespace
 
 
@@ -99,6 +143,7 @@ void ModularInstrument::setPatch(const synth::patch::Patch& patch) noexcept {
         dst.vibratoSemitones = src.vibratoSemitones;
         dst.isFmModulator = src.isFmModulator;
     }
+    buildOscRenderOrder(patch.oscs, oscCount_, oscRenderOrder_);
 
     envCount_ = patch.envCount;
     lfoCount_ = patch.lfoCount;
@@ -188,7 +233,7 @@ void ModularInstrument::setPatch(const synth::patch::Patch& patch) noexcept {
     }
 
     if (resonatorEnabled_) {
-        std::memset(resoPool_, 0, sizeof(resoPool_));
+        std::memset(resoPool_.data(), 0, sizeof(resoPool_));
     }
     for (uint8_t v = 0; v < MAX_VOICES; ++v) {
         resetVoice_(v);
@@ -326,12 +371,16 @@ void ModularInstrument::renderSynth_(const uint8_t voiceIdx, float* out, const u
         }
     }
 
-    float oscFreq[MAX_OSCS] = {};
-    float oscDp[MAX_OSCS] = {};
-    float lfoBuf[MAX_LFOS] = {};
-    float vibLfoBuf[MAX_LFOS] = {};
+    std::array<float, MAX_OSCS> oscFreq{};
+    std::array<float, MAX_OSCS> oscDp{};
+    std::array<float, MAX_LFOS> lfoBuf{};
+    std::array<float, MAX_LFOS> vibLfoBuf{};
 
     recomputeOscDp_(s, vibLfoBuf, invSr, oscFreq, oscDp);
+    for (uint8_t oi = 0; oi < oscCount_ && oi < MAX_OSCS; ++oi) {
+        const float f = (oscFreq[oi] > 1.0f) ? oscFreq[oi] : 1.0f;
+        s.oscSawTbl[oi] = synth::dsp::sawTableIdx(f);
+    }
 
     uint64_t batchTimer = 0;
 
@@ -347,12 +396,17 @@ void ModularInstrument::renderSynth_(const uint8_t voiceIdx, float* out, const u
             if (batchTimer == 0) {
                 for (uint8_t li = 0; li < MAX_LFOS; ++li) vibLfoBuf[li] = lfoBuf[li];
                 recomputeOscDp_(s, vibLfoBuf, invSr, oscFreq, oscDp);
+                for (uint8_t oi = 0; oi < oscCount_ && oi < MAX_OSCS; ++oi) {
+                    const float f = (oscFreq[oi] > 1.0f) ? oscFreq[oi] : 1.0f;
+                    s.oscSawTbl[oi] = synth::dsp::sawTableIdx(f);
+                }
             }
             batchTimer = (batchTimer + 1) & (kPitchBatch - 1);
         }
 
         float oscMix = 0.0f;
-        for (uint8_t oi = 0; oi < oscCount_ && oi < MAX_OSCS; ++oi) {
+        for (uint8_t ord = 0; ord < oscCount_ && ord < MAX_OSCS; ++ord) {
+            const uint8_t oi = oscRenderOrder_[ord];
             const float y = renderOneOsc_(s, oi, oscDp[oi]);
             const float lvl = oscs_[oi].level;
             if (lvl != 0.0f) oscMix += y * lvl;
@@ -432,7 +486,7 @@ float ModularInstrument::tickResonator_(VoiceState& s, float* resoBuf) noexcept 
 }
 
 void ModularInstrument::updateFilterCutoffs_(VoiceState& s,
-                                             const float lfoBuf[]) const noexcept {
+                                             const std::array<float, MAX_LFOS>& lfoBuf) const noexcept {
     for (uint8_t fi = 0; fi < filterCount_ && fi < MAX_FILTERS; ++fi) {
         const auto& fd = filters_[fi];
 
@@ -452,9 +506,9 @@ void ModularInstrument::updateFilterCutoffs_(VoiceState& s,
     }
 }
 
-void ModularInstrument::recomputeOscDp_(const VoiceState& s, const float vibSemis[MAX_LFOS],
-                                         const float invSr, float oscFreq[MAX_OSCS],
-                                         float oscDp[MAX_OSCS]) const noexcept {
+void ModularInstrument::recomputeOscDp_(const VoiceState& s, const std::array<float, MAX_LFOS>& vibSemis,
+                                         const float invSr, std::array<float, MAX_OSCS>& oscFreq,
+                                         std::array<float, MAX_OSCS>& oscDp) const noexcept {
     for (uint8_t i = 0; i < oscCount_ && i < MAX_OSCS; ++i) {
         const auto& od = oscs_[i];
         const float ratio = od.pitchRatio * (od.isFmModulator ? fmRatioScale_ : 1.0f);
@@ -474,7 +528,7 @@ void ModularInstrument::recomputeOscDp_(const VoiceState& s, const float vibSemi
 }
 
 float* ModularInstrument::voiceResoBuf_(const uint8_t v) noexcept {
-    return resoPool_ + static_cast<std::size_t>(v) * kResonatorBufSamples;
+    return resoPool_.data() + static_cast<std::size_t>(v) * kResonatorBufSamples;
 }
 
 float ModularInstrument::voicePan(const uint8_t v) const noexcept {

@@ -5,9 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#define I2S_BCLK_PIN  GPIO_NUM_14
-#define I2S_LRC_PIN   GPIO_NUM_12
-#define I2S_DIN_PIN   GPIO_NUM_13
+#include "synth/Constants.h"
 
 class Sound {
 public:

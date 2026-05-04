@@ -10,16 +10,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
+#include <array>
 #include <atomic>
 #include <cstdint>
 
-#define USB_MIDI_DEBUG 1
-#define MIDI_OUT_QUEUE_SIZE 128
+#include "synth/Constants.h"
 
-#define NUM_MIDI_IN_TRANSFERS 2
-#define MAX_CLIENT_EVENT_MESSAGES 5
-#define USB_EVENT_POLL_TICKS 1
-#define USB_AUDIO_SUBCLASS_MIDI_STREAMING 3
+#define USB_MIDI_DEBUG 1
 
 #if USB_MIDI_DEBUG
 #define USB_MIDI_LOG(format, ...)                 \
@@ -43,7 +40,7 @@ enum class MidiCin : uint8_t {
 
 class UsbMidi {
 public:
-    using MidiMessageCallback = void (*)(const uint8_t (&)[4]);
+    using MidiMessageCallback = void (*)(const std::array<uint8_t, 4>&);
     
 
     UsbMidi();
@@ -82,7 +79,7 @@ private:
     usb_host_client_handle_t _clientHandle;
     usb_device_handle_t _deviceHandle;
     usb_transfer_t* _midiOutTransfer;
-    usb_transfer_t* _midiInTransfers[NUM_MIDI_IN_TRANSFERS];
+    std::array<usb_transfer_t*, static_cast<std::size_t>(synth::cfg::kUsbMidiInTransfers)> _midiInTransfers{};
     QueueHandle_t _midiOutQueue;
     uint8_t _midiInterfaceNumber;
     bool _isMidiInterfaceFound;

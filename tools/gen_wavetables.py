@@ -4,47 +4,75 @@
 Run from the repo root:
     python tools/gen_wavetables.py
 
-Regenerates main/synth/dsp/WaveTables.cpp with the embedded sine table and
-bandlimited saw mipmap. Constants must stay in sync with WaveTables.h.
+Regenerates main/synth/dsp/WaveTables.cpp. Dimensions and saw band edges are read
+from main/synth/Constants.h (single source of truth).
 """
 from __future__ import annotations
 
 import math
-import os
+import re
 import sys
-
-SINE_SIZE = 2048
-SAW_TABLES = 10
-SAW_TABLE_SIZE = 1024
-DESIGN_SR = 44100.0
-SAW_MAX_FREQ = [
-    50.0, 100.0, 200.0, 400.0, 800.0,
-    1600.0, 3200.0, 6400.0, 12800.0, 25600.0,
-]
+from pathlib import Path
 
 PER_LINE = 8
 
 
-def gen_sine() -> list[float]:
-    return [math.sin(2.0 * math.pi * i / SINE_SIZE) for i in range(SINE_SIZE)]
+def load_synth_constants(header_path: Path) -> dict[str, object]:
+    text = header_path.read_text(encoding="utf-8")
+
+    def const_int(name: str) -> int:
+        m = re.search(rf"inline constexpr int\s+{re.escape(name)}\s*=\s*(\d+)\s*;", text)
+        if not m:
+            raise RuntimeError(f"missing int constant {name} in {header_path}")
+        return int(m.group(1))
+
+    def const_float(name: str) -> float:
+        m = re.search(rf"inline constexpr float\s+{re.escape(name)}\s*=\s*([0-9.]+)f\s*;", text)
+        if not m:
+            raise RuntimeError(f"missing float constant {name} in {header_path}")
+        return float(m.group(1))
+
+    m = re.search(
+        r"inline constexpr std::array<float,\s*kSawMipCount>\s+kSawBandMaxFreqHz\s*=\s*\{\{(.*?)\}\}\s*;",
+        text,
+        re.S,
+    )
+    if not m:
+        raise RuntimeError(f"kSawBandMaxFreqHz initializer not found in {header_path}")
+    freqs: list[float] = []
+    for part in m.group(1).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        freqs.append(float(part.rstrip("f")))
+    return {
+        "SINE_SIZE": const_int("kSineTableSize"),
+        "SAW_TABLES": const_int("kSawMipCount"),
+        "SAW_TABLE_SIZE": const_int("kSawTableSamples"),
+        "DESIGN_SR": const_float("kSawWavetableDesignSr"),
+        "SAW_MAX_FREQ": freqs,
+    }
 
 
-def gen_saw(fmax: float) -> list[float]:
-    nyq = DESIGN_SR * 0.5
+def gen_sine(sine_size: int) -> list[float]:
+    return [math.sin(2.0 * math.pi * i / sine_size) for i in range(sine_size)]
+
+
+def gen_saw(fmax: float, design_sr: float, saw_table_size: int) -> list[float]:
+    nyq = design_sr * 0.5
     n = max(1, int(nyq / fmax))
     out = []
     inv_pi_2 = -2.0 / math.pi
-    for i in range(SAW_TABLE_SIZE):
+    for i in range(saw_table_size):
         s = 0.0
         for k in range(1, n + 1):
-            s += math.sin(2.0 * math.pi * k * i / SAW_TABLE_SIZE) / k
+            s += math.sin(2.0 * math.pi * k * i / saw_table_size) / k
         out.append(inv_pi_2 * s)
     return out
 
 
 def fmt_float(x: float) -> str:
     s = f"{x:.9g}"
-    # C++ float literals require a decimal point or exponent before the 'f' suffix.
     if "." not in s and "e" not in s and "E" not in s:
         s += ".0"
     return s + "f"
@@ -52,19 +80,33 @@ def fmt_float(x: float) -> str:
 
 def write_block(lines: list[str], values: list[float], indent: str) -> None:
     for i in range(0, len(values), PER_LINE):
-        chunk = values[i:i + PER_LINE]
+        chunk = values[i : i + PER_LINE]
         lines.append(indent + ", ".join(fmt_float(v) for v in chunk) + ",")
 
 
 def main() -> int:
-    here = os.path.dirname(os.path.abspath(__file__))
-    out_path = os.path.normpath(os.path.join(here, "..", "main", "synth", "dsp", "WaveTables.cpp"))
+    here = Path(__file__).resolve().parent
+    repo = here.parent
+    const_path = repo / "main" / "synth" / "Constants.h"
+    C = load_synth_constants(const_path)
+    sine_size: int = C["SINE_SIZE"]  # type: ignore[assignment]
+    saw_tables: int = C["SAW_TABLES"]  # type: ignore[assignment]
+    saw_table_size: int = C["SAW_TABLE_SIZE"]  # type: ignore[assignment]
+    design_sr: float = C["DESIGN_SR"]  # type: ignore[assignment]
+    saw_max_freq: list[float] = C["SAW_MAX_FREQ"]  # type: ignore[assignment]
 
-    sine = gen_sine() + [0.0]
+    if len(saw_max_freq) != saw_tables:
+        raise RuntimeError(
+            f"kSawBandMaxFreqHz has {len(saw_max_freq)} entries; expected {saw_tables} (kSawMipCount)"
+        )
+
+    out_path = repo / "main" / "synth" / "dsp" / "WaveTables.cpp"
+
+    sine = gen_sine(sine_size) + [0.0]
     sine[-1] = sine[0]
     saws = []
-    for fmax in SAW_MAX_FREQ:
-        saw = gen_saw(fmax)
+    for fmax in saw_max_freq:
+        saw = gen_saw(fmax, design_sr, saw_table_size)
         saw.append(saw[0])
         saws.append(saw)
 
@@ -74,23 +116,25 @@ def main() -> int:
     lines.append("")
     lines.append('#include "synth/dsp/WaveTables.h"')
     lines.append("")
+    lines.append("#include <array>")
+    lines.append("")
     lines.append("namespace synth::dsp {")
     lines.append("")
-    lines.append("const float gSawTableMaxFreq[kSawTables] = {")
-    lines.append("    " + ", ".join(fmt_float(v) for v in SAW_MAX_FREQ))
-    lines.append("};")
+    lines.append("extern const std::array<float, kSawTables> gSawTableMaxFreq = { {")
+    lines.append("    " + ", ".join(fmt_float(v) for v in saw_max_freq))
+    lines.append("} };")
     lines.append("")
-    lines.append("float gSineTable[kSineSize + 1] = {")
+    lines.append("std::array<float, kSineSize + 1> gSineTable = { {")
     write_block(lines, sine, "    ")
-    lines.append("};")
+    lines.append("} };")
     lines.append("")
-    lines.append("float gSawTable[kSawTables][kSawTableSize + 1] = {")
+    lines.append("std::array<std::array<float, kSawTableSize + 1>, kSawTables> gSawTable = { {")
     for t, saw in enumerate(saws):
-        lines.append(f"    // table {t} (fMax = {SAW_MAX_FREQ[t]:.0f} Hz)")
-        lines.append("    {")
+        lines.append(f"    // table {t} (fMax = {saw_max_freq[t]:.0f} Hz)")
+        lines.append("    { {")
         write_block(lines, saw, "        ")
-        lines.append("    },")
-    lines.append("};")
+        lines.append("    } },")
+    lines.append("} };")
     lines.append("")
     lines.append("void initWaveTables() noexcept {")
     lines.append("    // Tables are statically initialised - nothing to do.")
@@ -99,8 +143,7 @@ def main() -> int:
     lines.append("} // namespace synth::dsp")
     lines.append("")
 
-    with open(out_path, "w", encoding="utf-8", newline="\n") as f:
-        f.write("\n".join(lines))
+    out_path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
     print(f"Wrote {out_path} ({sum(len(s) for s in lines)} chars)")
     return 0

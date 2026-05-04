@@ -1,7 +1,9 @@
 #ifndef SYNTHENGINE_H
 #define SYNTHENGINE_H
 
+#include <array>
 #include <cstdint>
+#include "synth/Constants.h"
 #include "synth/voice/VoiceAllocator.h"
 #include "synth/modules/Adsr.h"
 #include "synth/mix/GlobalMixer.h"
@@ -28,10 +30,10 @@ class SynthEngine {
     private:
         InstrumentManager* instruments_ = nullptr;
 
-        static constexpr uint8_t MAX_VOICES = 8;
+        static constexpr uint8_t MAX_VOICES = synth::cfg::kPatchMaxVoices;
         synth::voice::VoiceAllocator<MAX_VOICES> allocator_ = {};
-        synth::modules::Adsr ampEnv_[MAX_VOICES] = {};
-        float voiceVelocity_[MAX_VOICES] = {};
+        std::array<synth::modules::Adsr, MAX_VOICES> ampEnv_{};
+        std::array<float, MAX_VOICES> voiceVelocity_{};
         synth::voice::SameNoteMode sameNoteMode_ = synth::voice::SameNoteMode::SingleVoicePerKey;
         synth::mix::GlobalMixer mixer_ = {};
     };

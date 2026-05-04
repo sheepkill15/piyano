@@ -6,13 +6,14 @@
 #include <cstdint>
 #include <array>
 
+#include "synth/Constants.h"
 #include "synth/dsp/Approx.h"
 #include "synth/dsp/Util.h"
 
 namespace synth::voice {
 
-static constexpr uint8_t kMaxNotes = 128;
-static constexpr uint8_t kInvalidVoice = 0xFF;
+static constexpr uint8_t kMaxNotes = cfg::kMidiNoteCount;
+static constexpr uint8_t kInvalidVoice = cfg::kInvalidVoiceId;
 
 enum class SameNoteMode : uint8_t {
     SingleVoicePerKey,

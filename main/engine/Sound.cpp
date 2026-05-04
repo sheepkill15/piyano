@@ -22,9 +22,9 @@ Sound::Sound()
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
-            .bclk = I2S_BCLK_PIN,
-            .ws = I2S_LRC_PIN,
-            .dout = I2S_DIN_PIN,
+            .bclk = synth::cfg::kI2sBclkPin,
+            .ws = synth::cfg::kI2sLrcPin,
+            .dout = synth::cfg::kI2sDinPin,
             .din = I2S_GPIO_UNUSED,
             .invert_flags = {
                 .mclk_inv = false,
