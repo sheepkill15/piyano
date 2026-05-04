@@ -100,9 +100,15 @@ private:
     std::array<std::array<uint8_t, MaxVoices>, kMaxNotes> noteVoices_ = {};
 
     uint8_t allocateVoice_() noexcept {
-        // Round-robin steal (envelope/voice processor decides if it can be stolen smoothly).
+        for (uint8_t step = 0; step < maxVoices_; ++step) {
+            const uint8_t i = static_cast<uint8_t>((nextVoiceIndex_ + step) % maxVoices_);
+            if (!voices_[i].gate) {
+                nextVoiceIndex_ = static_cast<uint8_t>((i + 1) % maxVoices_);
+                return i;
+            }
+        }
         const uint8_t v = nextVoiceIndex_;
-        nextVoiceIndex_ = (nextVoiceIndex_ + 1) % maxVoices_;
+        nextVoiceIndex_ = static_cast<uint8_t>((nextVoiceIndex_ + 1) % maxVoices_);
         return v;
     }
 
