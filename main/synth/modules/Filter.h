@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <cmath>
-
 #include "AudioContext.h"
 #include "synth/dsp/Approx.h"
 #include "synth/dsp/Util.h"

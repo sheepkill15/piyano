@@ -1,57 +1,17 @@
 #include "ModularInstrument.h"
 
 #include "workstation/Params.h"
-#include "engine/AudioContext.h"
-
-#include "synth/Constants.h"
-#include "synth/dsp/Approx.h"
 #include "synth/dsp/Util.h"
-#include "synth/dsp/WaveTables.h"
 #include "synth/modules/Resonator.h"
 
-#include <array>
 #include <cmath>
 #include <cstring>
 
 namespace {
 
-constexpr float kTwoPi = synth::cfg::kTwoPi;
-constexpr float kInv2Pi = synth::cfg::kInv2Pi;
-constexpr float kRadiansToPhase01 = synth::cfg::kRadiansToPhase01;
-
-constexpr uint64_t kPitchBatch = synth::cfg::kPitchRecomputeBatch;
-static_assert((kPitchBatch & (kPitchBatch - 1)) == 0, "kPitchBatch must be a power of two");
-
- float wrap01(const float ph) noexcept {
-    return (ph >= 1.0f) ? ph - 1.0f : ph;
-}
-
  float wrap01Trunc(float ph) noexcept {
     ph -= static_cast<float>(static_cast<int>(ph));
     return (ph < 0.0f) ? ph + 1.0f : ph;
-}
-
- synth::modules::OscWave toOscWave(const synth::patch::OscShape s) noexcept {
-    using P = synth::patch::OscShape;
-    using W = synth::modules::OscWave;
-    switch (s) {
-        case P::Sine:     return W::Sine;
-        case P::Saw:      return W::Saw;
-        case P::Triangle: return W::Triangle;
-        case P::Pulse:    return W::Pulse;
-    }
-    return W::Sine;
-}
-
- synth::modules::SvfMode toSvfMode(const synth::patch::FilterMode m) noexcept {
-    using P = synth::patch::FilterMode;
-    using S = synth::modules::SvfMode;
-    switch (m) {
-        case P::LowPass:  return S::LowPass;
-        case P::BandPass: return S::BandPass;
-        case P::HighPass: return S::HighPass;
-    }
-    return S::LowPass;
 }
 
  synth::modules::LfoWave toLfoWave(const synth::patch::LfoShape s) noexcept {
@@ -66,9 +26,8 @@ static_assert((kPitchBatch & (kPitchBatch - 1)) == 0, "kPitchBatch must be a pow
     return L::Sine;
 }
 
- void buildOscRenderOrder(const std::array<synth::patch::OscDef, synth::patch::MAX_OSCS>& oscs,
-                          const uint8_t oscCount,
-                          std::array<uint8_t, synth::patch::MAX_OSCS>& outOrder) noexcept {
+ void sortOscsForFmInPlace(std::array<synth::patch::OscDef, synth::patch::MAX_OSCS>& oscs,
+                           const uint8_t oscCount) noexcept {
     // Topological sort: fmFrom -> carrier. If cyclic/invalid, fall back to 0..N-1.
     std::array<uint8_t, synth::patch::MAX_OSCS> indeg{};
     std::array<std::array<uint8_t, synth::patch::MAX_OSCS>, synth::patch::MAX_OSCS> adj{};
@@ -77,7 +36,7 @@ static_assert((kPitchBatch & (kPitchBatch - 1)) == 0, "kPitchBatch must be a pow
     for (uint8_t i = 0; i < oscCount; ++i) {
         const int8_t from = oscs[i].fmFrom;
         if (from >= 0 && static_cast<uint8_t>(from) < oscCount) {
-            const uint8_t u = static_cast<uint8_t>(from);
+            const auto u = static_cast<uint8_t>(from);
             const uint8_t v = i;
             adj[u][adjCount[u]++] = v;
             indeg[v] = static_cast<uint8_t>(indeg[v] + 1);
@@ -91,10 +50,11 @@ static_assert((kPitchBatch & (kPitchBatch - 1)) == 0, "kPitchBatch must be a pow
         if (indeg[i] == 0) q[qt++] = i;
     }
 
+    std::array<uint8_t, synth::patch::MAX_OSCS> order{};
     uint8_t outN = 0;
     while (qh != qt) {
         const uint8_t u = q[qh++];
-        outOrder[outN++] = u;
+        order[outN++] = u;
         for (uint8_t k = 0; k < adjCount[u]; ++k) {
             const uint8_t v = adj[u][k];
             indeg[v] = static_cast<uint8_t>(indeg[v] - 1);
@@ -102,10 +62,23 @@ static_assert((kPitchBatch & (kPitchBatch - 1)) == 0, "kPitchBatch must be a pow
         }
     }
 
-    if (outN != oscCount) {
-        for (uint8_t i = 0; i < oscCount; ++i) outOrder[i] = i;
+    if (outN != oscCount) return;
+
+    std::array<uint8_t, synth::patch::MAX_OSCS> oldToNew{};
+    for (uint8_t newIdx = 0; newIdx < oscCount; ++newIdx) {
+        oldToNew[order[newIdx]] = newIdx;
     }
-    for (uint8_t i = oscCount; i < synth::patch::MAX_OSCS; ++i) outOrder[i] = i;
+
+    const auto oldOscs = oscs;
+    for (uint8_t newIdx = 0; newIdx < oscCount; ++newIdx) {
+        auto od = oldOscs[order[newIdx]];
+        if (od.fmFrom >= 0 && static_cast<uint8_t>(od.fmFrom) < oscCount) {
+            od.fmFrom = static_cast<int8_t>(oldToNew[static_cast<uint8_t>(od.fmFrom)]);
+        } else {
+            od.fmFrom = -1;
+        }
+        oscs[newIdx] = od;
+    }
  }
 
 } // namespace
@@ -117,20 +90,16 @@ void ModularInstrument::setPatch(const synth::patch::Patch& patch) noexcept {
     }
 
     patch_ = patch;
-
-    buildOscRenderOrder(patch_.oscs, patch_.oscCount, oscRenderOrder_);
+    sortOscsForFmInPlace(patch_.oscs, patch_.oscCount);
 
     outDrive_.preGain = patch_.drive.preGain;
     outDrive_.postGain = patch_.drive.postGain;
 
-    // Bake module config straight onto every voice's modules. After this the
-    // Patch can be discarded; per-voice modules carry everything they need.
-    const float sr = engine::gAudio.sampleRate;
     for (uint8_t v = 0; v < MAX_VOICES; ++v) {
-        VoiceState& vs = voices_[v];
+        VoiceState& s = voices_[v];
 
         for (uint8_t i = 0; i < MAX_ENVS; ++i) {
-            auto& e = vs.modEnvs[i];
+            auto& e = s.modEnvs[i];
             e.attack_s  = patch_.envs[i].attack;
             e.decay_s   = patch_.envs[i].decay;
             e.sustain   = patch_.envs[i].sustain;
@@ -140,10 +109,9 @@ void ModularInstrument::setPatch(const synth::patch::Patch& patch) noexcept {
         }
 
         for (uint8_t i = 0; i < MAX_LFOS; ++i) {
-            auto& l = vs.lfos[i];
+            auto& l = s.lfos[i];
             l.wave = toLfoWave(patch_.lfos[i].shape);
-            l.rateHz = patch_.lfos[i].rateHz
-                     + patch_.lfos[i].perVoiceRateSpread * static_cast<float>(v);
+            l.rateHz = patch_.lfos[i].rateHz + patch_.lfos[i].perVoiceRateSpread * static_cast<float>(v);
             float ph = patch_.lfos[i].perVoicePhase * static_cast<float>(v);
             ph -= floorf(ph);
             l.phase = ph;
@@ -151,14 +119,8 @@ void ModularInstrument::setPatch(const synth::patch::Patch& patch) noexcept {
             l.shValue = 0.0f;
         }
 
-        for (uint8_t i = 0; i < MAX_FILTERS; ++i) {
-            auto& f = vs.filters[i];
-            f.reset();
-            f.mode = toSvfMode(patch_.filters[i].mode);
-            f.set(patch_.filters[i].cutoffHz, patch_.filters[i].resonance);
-        }
-
-        vs.pink.color = patch_.noise.color;
+        s.filterBank.bakePatch(patch_);
+        s.noise.pink.color = patch_.noise.color;
     }
 
     if (patch_.resonator.enabled) {
@@ -176,14 +138,13 @@ void ModularInstrument::resetVoice_(uint8_t v) noexcept {
     s.vel = 0.0f;
     s.note = 0;
     s.keyT = 0.0f;
-    for (uint8_t i = 0; i < MAX_OSCS; ++i) {
-        s.oscPhase[i] = 0.0f;
-        s.oscFb[i] = 0.0f;
-        s.oscOut[i] = 0.0f;
-        s.oscSawTbl[i] = 0;
-    }
+    s.pan = 0.0f;
+    s.oscBank.reset();
     for (auto& e : s.modEnvs) e.reset();
-    for (auto& f : s.filters) f.reset();
+    for (auto& l : s.lfos) {
+        (void)l;
+    }
+    s.filterBank.reset();
     s.resoIdx = 0;
     s.resoLp = 0.0f;
     s.bodyHp.reset();
@@ -196,8 +157,6 @@ void ModularInstrument::resetVoice_(uint8_t v) noexcept {
 void ModularInstrument::onVoiceStart(const uint8_t v, const VoiceContext& ctx) noexcept {
     if (v >= MAX_VOICES) return;
     VoiceState& s = voices_[v];
-    const float sr = engine::gAudio.sampleRate;
-
     s.active = true;
     s.freq = ctx.frequency;
     s.vel = ctx.velocity;
@@ -211,17 +170,7 @@ void ModularInstrument::onVoiceStart(const uint8_t v, const VoiceContext& ctx) n
         s.pan = 0.0f;
     }
 
-    for (uint8_t i = 0; i < patch_.oscCount && i < MAX_OSCS; ++i) {
-        s.oscPhase[i] = (i == 1) ? 0.5f : 0.0f;
-        s.oscFb[i] = 0.0f;
-        s.oscOut[i] = 0.0f;
-
-        const auto& od = patch_.oscs[i];
-        const float ratio = od.pitchRatio * (od.isFmModulator ? patch_.fmRatioScale : 1.0f);
-        const float octaves = (od.pitchSemitones + od.pitchCents * 0.01f) * (1.0f / 12.0f);
-        const float f = ctx.frequency * ratio * synth::dsp::exp2Fast(octaves);
-        s.oscSawTbl[i] = synth::dsp::sawTableIdx(f > 1.0f ? f : 1.0f);
-    }
+    s.oscBank.noteOn(patch_, v, ctx.frequency);
 
     for (uint8_t i = 1; i < patch_.envCount && i < MAX_ENVS; ++i) {
         s.modEnvs[i].reset();
@@ -232,14 +181,7 @@ void ModularInstrument::onVoiceStart(const uint8_t v, const VoiceContext& ctx) n
         s.lfos[i].phase = wrap01Trunc(patch_.lfos[i].perVoicePhase * static_cast<float>(v));
     }
 
-    for (uint8_t i = 0; i < patch_.filterCount && i < MAX_FILTERS; ++i) {
-        auto& f = s.filters[i];
-        f.reset();
-        const auto& fd = patch_.filters[i];
-        const float cutoff = fd.cutoffHz + fd.velToCutoffHz * ctx.velocity;
-        f.mode = toSvfMode(fd.mode);
-        f.set(cutoff, fd.resonance);
-    }
+    s.filterBank.noteOn(patch_, ctx.velocity);
 
     if (patch_.exciter.enabled) {
         const float clk = patch_.exciter.clickLevelBase + patch_.exciter.clickLevelVel * ctx.velocity;
@@ -249,6 +191,7 @@ void ModularInstrument::onVoiceStart(const uint8_t v, const VoiceContext& ctx) n
     }
 
     if (patch_.resonator.enabled) {
+        const float sr = engine::gAudio.sampleRate;
         const float f = (ctx.frequency < 20.0f) ? 20.0f : ctx.frequency;
         auto delay = static_cast<std::size_t>(sr / f);
         if (delay < 2) delay = 2;
@@ -274,22 +217,17 @@ void ModularInstrument::onVoiceStart(const uint8_t v, const VoiceContext& ctx) n
 
 void ModularInstrument::onVoiceStop(const uint8_t v) noexcept {
     if (v >= MAX_VOICES) return;
-    VoiceState& s = voices_[v];
-    for (uint8_t i = 1; i < MAX_ENVS; ++i) s.modEnvs[i].noteOff();
+    for (uint8_t i = 1; i < MAX_ENVS; ++i) voices_[v].modEnvs[i].noteOff();
 }
 
 void ModularInstrument::renderAddVoice(const uint8_t v, float* outMono, const uint64_t numSamples) noexcept {
     if (v >= MAX_VOICES || !outMono || numSamples == 0) return;
-    renderSynth_(v, outMono, numSamples);
-}
-
-void ModularInstrument::renderSynth_(const uint8_t voiceIdx, float* out, const uint64_t n) noexcept {
-    VoiceState& s = voices_[voiceIdx];
+    VoiceState& s = voices_[v];
     const float invSr = engine::gAudio.invSampleRate;
+    float* const resoBuf = patch_.resonator.enabled ? voiceResoBuf_(v) : nullptr;
 
-    const bool resoOn = patch_.resonator.enabled;
-    const bool driveOn = patch_.drive.enabled;
-    float* const resoBuf = resoOn ? voiceResoBuf_(voiceIdx) : nullptr;
+    std::array<float, MAX_LFOS> lfoBuf{};
+    std::array<float, MAX_ENVS> envLevels{};
 
     bool vibPitch = false;
     for (uint8_t oi = 0; oi < patch_.oscCount && oi < MAX_OSCS; ++oi) {
@@ -302,58 +240,34 @@ void ModularInstrument::renderSynth_(const uint8_t voiceIdx, float* out, const u
         }
     }
 
-    std::array<float, MAX_OSCS> oscFreq{};
-    std::array<float, MAX_OSCS> oscDp{};
-    std::array<float, MAX_LFOS> lfoBuf{};
-    std::array<float, MAX_LFOS> vibLfoBuf{};
-
-    recomputeOscDp_(s, vibLfoBuf, invSr, oscFreq, oscDp);
-    for (uint8_t oi = 0; oi < patch_.oscCount && oi < MAX_OSCS; ++oi) {
-        const float f = (oscFreq[oi] > 1.0f) ? oscFreq[oi] : 1.0f;
-        s.oscSawTbl[oi] = synth::dsp::sawTableIdx(f);
-    }
-
+    constexpr uint64_t kPitchBatch = synth::cfg::kPitchRecomputeBatch;
     uint64_t batchTimer = 0;
 
-    for (uint64_t i = 0; i < n; ++i) {
+    for (uint64_t i = 0; i < numSamples; ++i) {
         for (uint8_t li = 0; li < patch_.lfoCount && li < MAX_LFOS; ++li) {
             lfoBuf[li] = s.lfos[li].tick();
         }
         for (uint8_t ei = 1; ei < patch_.envCount && ei < MAX_ENVS; ++ei) {
             s.modEnvs[ei].tick(invSr);
+            envLevels[ei] = s.modEnvs[ei].level;
         }
 
         if (vibPitch) {
-            if (batchTimer == 0) {
-                for (uint8_t li = 0; li < MAX_LFOS; ++li) vibLfoBuf[li] = lfoBuf[li];
-                recomputeOscDp_(s, vibLfoBuf, invSr, oscFreq, oscDp);
-                for (uint8_t oi = 0; oi < patch_.oscCount && oi < MAX_OSCS; ++oi) {
-                    const float f = (oscFreq[oi] > 1.0f) ? oscFreq[oi] : 1.0f;
-                    s.oscSawTbl[oi] = synth::dsp::sawTableIdx(f);
-                }
-            }
+            if (batchTimer == 0) s.oscBank.recomputePitch(patch_, s.freq, lfoBuf);
             batchTimer = (batchTimer + 1) & (kPitchBatch - 1);
         }
 
-        float oscMix = 0.0f;
-        for (uint8_t ord = 0; ord < patch_.oscCount && ord < MAX_OSCS; ++ord) {
-            const uint8_t oi = oscRenderOrder_[ord];
-            const float y = renderOneOsc_(s, oi, oscDp[oi]);
-            const float lvl = patch_.oscs[oi].level;
-            if (lvl != 0.0f) oscMix += y * lvl;
-        }
+        const float oscMix = s.oscBank.tickMix(patch_, envLevels, s.vel);
+        const float noiseSample = s.noise.tick(patch_.noise);
 
-        float noiseSample = 0.0f;
-        if (patch_.noise.shape == synth::patch::NoiseShape::White) {
-            noiseSample = s.white.tick() * patch_.noise.level;
-        } else if (patch_.noise.shape == synth::patch::NoiseShape::Pinkish) {
-            noiseSample = s.pink.tick() * patch_.noise.level;
-        }
-
-        const float resoOut = (resoOn && resoBuf) ? tickResonator_(s, resoBuf) : 0.0f;
+        const float resoOut =
+            (patch_.resonator.enabled && resoBuf)
+                ? synth::modules::tickKarplusRingPow2(resoBuf, kResonatorMask, s.resoIdx, s.resoDelay, s.resoLp,
+                                                     s.resoDamp, s.resoFb, s.click.tick() + s.burst.tick())
+                : 0.0f;
 
         float sig;
-        if (resoOn) {
+        if (patch_.resonator.enabled) {
             const float harmGain = 0.20f + 0.55f * s.vel;
             sig = resoOut * patch_.resonator.bodyMix
                 + oscMix * patch_.resonator.harmAmount * harmGain
@@ -365,96 +279,13 @@ void ModularInstrument::renderSynth_(const uint8_t voiceIdx, float* out, const u
         }
 
         if ((i & (kPitchBatch - 1)) == 0) {
-            updateFilterCutoffs_(s, lfoBuf);
+            s.filterBank.updateCutoffs(patch_, s.vel, lfoBuf, envLevels);
         }
-        for (uint8_t fi = 0; fi < patch_.filterCount && fi < MAX_FILTERS; ++fi) {
-            sig = s.filters[fi].tick(sig);
-        }
+        sig = s.filterBank.process(patch_, sig);
 
-        if (driveOn) {
-            sig = outDrive_.tick(sig);
-        }
+        if (patch_.drive.enabled) sig = outDrive_.tick(sig);
 
-        out[i] += sig * patch_.outputGain;
-    }
-}
-
-float ModularInstrument::renderOneOsc_(VoiceState& s, const uint8_t oi, const float dp) const noexcept {
-    const auto& od = patch_.oscs[oi];
-
-    const float ph = wrap01(s.oscPhase[oi] + dp);
-    s.oscPhase[oi] = ph;
-
-    float phaseMod = ph;
-    if (od.fmFeedback != 0.0f) {
-        phaseMod += s.oscFb[oi] * od.fmFeedback * kRadiansToPhase01;
-    }
-    if (od.fmFrom >= 0 && od.fmFrom < patch_.oscCount) {
-        float idx = od.fmIndex;
-        if (patch_.oscs[od.fmFrom].isFmModulator) idx *= patch_.fmIndexScale;
-        if (od.modEnvIndex >= 1 && od.modEnvIndex < MAX_ENVS) {
-            idx *= s.modEnvs[od.modEnvIndex].level;
-        }
-        if (od.velToFmIndex > 0.0f) {
-            const float velMix = od.velToFmIndex;
-            idx *= (1.0f - velMix) + velMix * (0.25f + 0.75f * s.vel);
-        }
-        phaseMod += s.oscOut[od.fmFrom] * idx * kRadiansToPhase01;
-    }
-    phaseMod = wrap01Trunc(phaseMod);
-
-    const float y =
-        synth::modules::sampleOscWave(toOscWave(od.shape), phaseMod, s.oscSawTbl[oi], od.pulseWidth);
-    s.oscOut[oi] = y;
-    s.oscFb[oi] = y;
-    return y;
-}
-
-float ModularInstrument::tickResonator_(VoiceState& s, float* resoBuf) noexcept {
-    const float exc = s.click.tick() + s.burst.tick();
-    return synth::modules::tickKarplusRingPow2(resoBuf, kResonatorMask, s.resoIdx, s.resoDelay, s.resoLp,
-                                               s.resoDamp, s.resoFb, exc);
-}
-
-void ModularInstrument::updateFilterCutoffs_(VoiceState& s,
-                                             const std::array<float, MAX_LFOS>& lfoBuf) const noexcept {
-    for (uint8_t fi = 0; fi < patch_.filterCount && fi < MAX_FILTERS; ++fi) {
-        const auto& fd = patch_.filters[fi];
-
-        float envLvl = 0.0f;
-        if (fd.envIndex >= 1 && fd.envIndex < MAX_ENVS) {
-            envLvl = s.modEnvs[fd.envIndex].level;
-        }
-
-        float cut = fd.cutoffHz + (fd.cutoffPeakHz - fd.cutoffHz) * envLvl;
-        cut += fd.velToCutoffHz * s.vel;
-        if (fd.lfoIndex >= 0 && fd.lfoIndex < MAX_LFOS) {
-            cut += lfoBuf[fd.lfoIndex] * fd.lfoCutoffHz;
-        }
-        if (cut < 20.0f) cut = 20.0f;
-
-        s.filters[fi].set(cut, fd.resonance);
-    }
-}
-
-void ModularInstrument::recomputeOscDp_(const VoiceState& s, const std::array<float, MAX_LFOS>& vibSemis,
-                                         const float invSr, std::array<float, MAX_OSCS>& oscFreq,
-                                         std::array<float, MAX_OSCS>& oscDp) const noexcept {
-    for (uint8_t i = 0; i < patch_.oscCount && i < MAX_OSCS; ++i) {
-        const auto& od = patch_.oscs[i];
-        const float ratio = od.pitchRatio * (od.isFmModulator ? patch_.fmRatioScale : 1.0f);
-
-        float vibOctaves = 0.0f;
-        if (od.vibratoLfoIndex >= 0
-            && static_cast<uint8_t>(od.vibratoLfoIndex) < patch_.lfoCount) {
-            vibOctaves = vibSemis[od.vibratoLfoIndex] * od.vibratoSemitones * (1.0f / 12.0f);
-        }
-        const float octaves =
-            (od.pitchSemitones + od.pitchCents * 0.01f) * (1.0f / 12.0f) + vibOctaves;
-
-        const float f = s.freq * ratio * synth::dsp::exp2Fast(octaves);
-        oscFreq[i] = f;
-        oscDp[i] = f * invSr;
+        outMono[i] += sig * patch_.outputGain;
     }
 }
 
