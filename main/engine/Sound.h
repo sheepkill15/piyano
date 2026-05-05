@@ -31,7 +31,7 @@ public:
     float dcFilterState_ = 0.0f;
 
 private:
-    static constexpr std::size_t kFrames = static_cast<std::size_t>(synth::cfg::kAudioRenderBlockSamples);
+    static constexpr std::size_t kFrames = synth::cfg::kAudioRenderBlockSamples;
     std::array<int16_t, kFrames * 2> i2sBuf_{};
 };
 

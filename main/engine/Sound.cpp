@@ -65,10 +65,6 @@ void Sound::setAmplitude(float amplitude) {
 }
 
 void Sound::write(const float* mono, const size_t frames) {
-    assert(tx_handle);
-    assert(mono);
-    assert(frames == Sound::kFrames);
-
     const float amp = engine::gAudio.masterAmplitude;
     for (size_t i = 0; i < frames; ++i) {
         float s = mono[i] * amp;
@@ -85,10 +81,6 @@ void Sound::write(const float* mono, const size_t frames) {
 }
 
 void Sound::writeStereoInterleaved(const float* stereoLR, const size_t frames) {
-    assert(tx_handle);
-    assert(stereoLR);
-    assert(frames == Sound::kFrames);
-
     const float amp = engine::gAudio.masterAmplitude;
     for (size_t i = 0; i < frames; ++i) {
         const float l = synth::dsp::clamp(stereoLR[2 * i]     * amp, -1.0f, 1.0f);
