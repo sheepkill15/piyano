@@ -36,6 +36,7 @@ enum class MidiCin : uint8_t {
     NOTE_ON = 0x09,
     CONTROL_CHANGE = 0x0B,
     PROGRAM_CHANGE = 0x0C,
+    PITCH_BEND = 0x0E,
 };
 
 class UsbMidi {

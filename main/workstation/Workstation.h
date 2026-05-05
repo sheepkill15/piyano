@@ -16,8 +16,8 @@ public:
 
     void begin() noexcept;
 
-    void noteOn(const uint8_t /*channel*/, const uint8_t note, const float vel) noexcept { synth_.noteOn(note, vel); }
-    void noteOff(const uint8_t /*channel*/, const uint8_t note) noexcept { synth_.noteOff(note); }
+    void noteOn(uint8_t channel, uint8_t note, float vel) noexcept;
+    void noteOff(uint8_t channel, uint8_t note) noexcept;
     void update(const float dt) noexcept { synth_.update(dt); }
 
     // Renders interleaved stereo (L,R,...) and writes to I2S.
@@ -25,6 +25,7 @@ public:
 
     void handleControlChange(uint8_t channel, uint8_t control, uint8_t value) noexcept;
     void handleProgramChange(uint8_t channel, uint8_t program) noexcept;
+    void handlePitchBend(uint8_t channel, uint16_t bend14) noexcept;
 
     [[nodiscard]] uint8_t currentPresetIndex() const noexcept { return currentPreset_; }
     [[nodiscard]] uint8_t presetCount() const noexcept { return presetCount_; }
@@ -39,6 +40,7 @@ private:
     void loadPreset_(uint8_t presetIndex) noexcept;
     void nextPreset_() noexcept;
     void applyAmpEnv_(const synth::patch::Patch& patch) noexcept;
+    void applyMaster_() noexcept;
 
     SynthEngine synth_{};
     InstrumentManager instruments_{};
@@ -48,4 +50,12 @@ private:
     std::array<synth::patch::Patch, MAX_PRESETS> presets_{};
     uint8_t presetCount_ = 0;
     uint8_t currentPreset_ = 0;
+
+    float masterGain_ = 0.75f;
+    float expression_ = 1.0f;
+    float pitchBendNorm_ = 0.0f; // -1..+1
+
+    bool sustainDown_ = false;
+    std::array<bool, synth::cfg::kMidiNoteCount> keyDown_{};
+    std::array<bool, synth::cfg::kMidiNoteCount> sustained_{};
 };

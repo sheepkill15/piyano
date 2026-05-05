@@ -15,6 +15,7 @@ Workstation workstation;
 // MIDI callback functions
 void onMidiNoteOn(uint8_t channel, uint8_t pitch, uint8_t velocity);
 void onMidiNoteOff(uint8_t channel, uint8_t pitch);
+void onMidiPitchBend(uint8_t channel, uint8_t lsb, uint8_t msb);
 void handleMidiMessage(const std::array<uint8_t, 4>& data);
 
 TaskHandle_t soundTaskHandle;
@@ -102,6 +103,12 @@ void handleMidiMessage(const std::array<uint8_t, 4>& data) {
             ESP_LOGI(TAG, "Program Change: program:%d", program);
             break;
         }
+        case MidiCin::PITCH_BEND: {
+            const uint8_t lsb = data[2] & 0x7F;
+            const uint8_t msb = data[3] & 0x7F;
+            onMidiPitchBend(channel, lsb, msb);
+            break;
+        }
         default:
             break;
     }
@@ -118,4 +125,9 @@ void onMidiNoteOn(const uint8_t channel, const uint8_t pitch, const uint8_t velo
 
 void onMidiNoteOff(const uint8_t channel, const uint8_t pitch) {
     workstation.noteOff(channel, pitch);
+}
+
+void onMidiPitchBend(const uint8_t channel, const uint8_t lsb, const uint8_t msb) {
+    const uint16_t bend14 = static_cast<uint16_t>(lsb) | (static_cast<uint16_t>(msb) << 7);
+    workstation.handlePitchBend(channel, bend14);
 }

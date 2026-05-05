@@ -2,6 +2,7 @@
 
 #include "workstation/Params.h"
 #include "synth/dsp/Util.h"
+#include "synth/dsp/Approx.h"
 #include "synth/modules/Resonator.h"
 
 #include <cmath>
@@ -80,6 +81,8 @@ namespace {
         oscs[newIdx] = od;
     }
  }
+
+ inline float clamp01(const float x) noexcept { return (x < 0.0f) ? 0.0f : (x > 1.0f ? 1.0f : x); }
 
 } // namespace
 
@@ -167,7 +170,8 @@ void ModularInstrument::onVoiceStart(const uint8_t v, const VoiceContext& ctx) n
         s.pan = 0.0f;
     }
 
-    s.oscBank.noteOn(patch_, v, ctx.frequency);
+    const float bentHz = ctx.frequency * pitchBendMul_;
+    s.oscBank.noteOn(patch_, v, bentHz);
 
     for (uint8_t i = 1; i < patch_.envCount && i < MAX_ENVS; ++i) {
         s.modEnvs[i].reset();
@@ -189,7 +193,8 @@ void ModularInstrument::onVoiceStart(const uint8_t v, const VoiceContext& ctx) n
 
     if (patch_.resonator.enabled) {
         const auto sr = static_cast<float>(engine::gAudio.sampleRate);
-        const float f = (ctx.frequency < 20.0f) ? 20.0f : ctx.frequency;
+        const float f0 = bentHz;
+        const float f = (f0 < 20.0f) ? 20.0f : f0;
         auto delay = static_cast<std::size_t>(sr / f);
         if (delay < 2) delay = 2;
         if (delay >= kResonatorBufSamples) delay = kResonatorBufSamples - 1;
@@ -236,6 +241,7 @@ void ModularInstrument::renderAddVoice(const uint8_t v, float* outMono, const ui
             break;
         }
     }
+    const bool bendPitch = pitchBendMul_ != 1.0f;
 
     constexpr uint64_t kPitchBatch = synth::cfg::kPitchRecomputeBatch;
     uint64_t batchTimer = 0;
@@ -249,8 +255,8 @@ void ModularInstrument::renderAddVoice(const uint8_t v, float* outMono, const ui
             envLevels[ei] = s.modEnvs[ei].level;
         }
 
-        if (vibPitch) {
-            if (batchTimer == 0) s.oscBank.recomputePitch(patch_, s.freq, lfoBuf);
+        if (vibPitch || bendPitch) {
+            if (batchTimer == 0) s.oscBank.recomputePitch(patch_, s.freq * pitchBendMul_, lfoBuf);
             batchTimer = (batchTimer + 1) & (kPitchBatch - 1);
         }
 
@@ -305,6 +311,69 @@ bool ModularInstrument::setParam(const uint16_t paramId, const float value) noex
         case Params::FmModRatio: {
             const float v = synth::dsp::clamp(value, 0.0f, 1.0f);
             patch_.fmRatioScale = 0.25f + v * (4.0f - 0.25f);
+            return true;
+        }
+        case Params::FilterCutoff: {
+            const float v = clamp01(value);
+            // Map 0..1 to a wide musical cutoff range and apply to all filters.
+            const float hz = 20.0f + v * (16000.0f - 20.0f);
+            for (uint8_t i = 0; i < patch_.filterCount && i < MAX_FILTERS; ++i) {
+                auto& fd = patch_.filters[i];
+                fd.cutoffHz = hz;
+                fd.cutoffPeakHz = hz;
+            }
+            return true;
+        }
+        case Params::FilterResonance: {
+            const float v = clamp01(value);
+            for (uint8_t i = 0; i < patch_.filterCount && i < MAX_FILTERS; ++i) {
+                auto& fd = patch_.filters[i];
+                fd.resonance = synth::dsp::clamp(v * 0.99f, 0.0f, 0.99f);
+            }
+            return true;
+        }
+        case Params::FilterLfoAmt: {
+            const float v = clamp01(value);
+            for (uint8_t i = 0; i < patch_.filterCount && i < MAX_FILTERS; ++i) {
+                auto& fd = patch_.filters[i];
+                fd.lfoCutoffHz = v * 6000.0f;
+            }
+            return true;
+        }
+        case Params::Drive: {
+            const float v = clamp01(value);
+            patch_.drive.enabled = v > 0.01f;
+            patch_.drive.preGain = 1.0f + 12.0f * v;
+            patch_.drive.postGain = 1.0f - 0.85f * v;
+            outDrive_.preGain = patch_.drive.preGain;
+            outDrive_.postGain = patch_.drive.postGain;
+            return true;
+        }
+        case Params::NoiseLevel: {
+            const float v = clamp01(value);
+            patch_.noise.level = v;
+            return true;
+        }
+        case Params::NoiseColor: {
+            const float v = clamp01(value);
+            patch_.noise.color = 0.001f + v * (0.35f - 0.001f);
+            return true;
+        }
+        case Params::Vibrato: {
+            const float v = clamp01(value);
+            for (uint8_t i = 0; i < patch_.oscCount && i < MAX_OSCS; ++i) {
+                patch_.oscs[i].vibratoSemitones = v * 2.0f;
+            }
+            return true;
+        }
+        case Params::PitchBend: {
+            // value: normalized -1..+1
+            float n = value;
+            if (n < -1.0f) n = -1.0f;
+            if (n >  1.0f) n =  1.0f;
+            constexpr float kBendRangeSemis = 2.0f;
+            const float semis = n * kBendRangeSemis;
+            pitchBendMul_ = synth::dsp::exp2Fast(semis * (1.0f / 12.0f));
             return true;
         }
         default:

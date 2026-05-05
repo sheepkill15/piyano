@@ -87,6 +87,7 @@ private:
 
     // ===== Instrument-level config (built by setPatch()) =====
     synth::patch::Patch patch_{};
+    float pitchBendMul_ = 1.0f;
 
     synth::modules::Drive outDrive_{};
 
