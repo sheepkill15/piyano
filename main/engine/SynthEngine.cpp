@@ -97,15 +97,16 @@ void SynthEngine::render(float* stereoLR, const uint64_t nFrames) noexcept {
     while (offset < nFrames) {
         const uint64_t block = (nFrames - offset > kBlockSize) ? kBlockSize : (nFrames - offset);
 
-        for (uint8_t v = 0; v < MAX_VOICES; ++v) {
-            if (!ampEnv_[v].isActive()) continue;
+        uint8_t v = 0;
+        for (auto& env : ampEnv_) {
+            if (!env.isActive()) { ++v; continue; }
 
             // Per-sample envelope curve for the block.
             for (uint64_t i = 0; i < block; ++i) {
-                ampEnv_[v].tick(dtPerSample);
-                envBuf[i] = ampEnv_[v].level;
+                env.tick(dtPerSample);
+                envBuf[i] = env.level;
             }
-            if (!ampEnv_[v].isActive()) {
+            if (!env.isActive()) {
                 // Quick fade-out to zero (silence the tail to avoid clicks)
             }
 
@@ -130,6 +131,7 @@ void SynthEngine::render(float* stereoLR, const uint64_t nFrames) noexcept {
                 dst[2 * i]     += s * gL;
                 dst[2 * i + 1] += s * gR;
             }
+            ++v;
         }
 
         offset += block;

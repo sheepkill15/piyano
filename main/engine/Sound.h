@@ -14,10 +14,9 @@ public:
     ~Sound();
 
     void begin();
-    // Mono frames -> duplicated to L/R
-    void write(const float* mono, size_t frames);
-    // Interleaved stereo frames: LRLRLR...
-    void writeStereoInterleaved(const float* stereoLR, size_t frames);
+    using StereoBlock = std::array<float, synth::cfg::kAudioRenderBlockSamples * 2>;
+    [[nodiscard]] StereoBlock& stereoBlock() noexcept { return stereoBlock_; }
+    void writeStereoInterleaved(const StereoBlock& stereoLR);
 
     // Configuration
     void setSampleRate(uint32_t rate);
@@ -32,6 +31,7 @@ public:
 
 private:
     static constexpr std::size_t kFrames = synth::cfg::kAudioRenderBlockSamples;
+    StereoBlock stereoBlock_{};
     std::array<int16_t, kFrames * 2> i2sBuf_{};
 };
 

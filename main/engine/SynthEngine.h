@@ -24,6 +24,8 @@ class SynthEngine {
 
         // Renders interleaved stereo (L,R,L,R,...) of `nFrames` frames.
         void render(float* stereoLR, uint64_t nFrames) noexcept;
+        using StereoBlock = std::array<float, synth::cfg::kAudioRenderBlockSamples * 2>;
+        void render(StereoBlock& stereoLR) noexcept { render(stereoLR.data(), synth::cfg::kAudioRenderBlockSamples); }
 
         void update(float dt) noexcept;
 

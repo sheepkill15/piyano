@@ -6,7 +6,6 @@
 #include <cassert>
 #include <cstring>
 
-#include "synth/dsp/Approx.h"
 #include "synth/dsp/Util.h"
 
 static auto TAG = "SOUND";
@@ -64,32 +63,15 @@ void Sound::setAmplitude(float amplitude) {
     ESP_LOGI(TAG, "Master amplitude set to: %.2f", engine::gAudio.masterAmplitude);
 }
 
-void Sound::write(const float* mono, const size_t frames) {
+void Sound::writeStereoInterleaved(const StereoBlock& stereoLR) {
     const float amp = engine::gAudio.masterAmplitude;
-    for (size_t i = 0; i < frames; ++i) {
-        float s = mono[i] * amp;
-        if (s > 1.0f) s = 1.0f;
-        else if (s < -1.0f) s = -1.0f;
-        const auto v = static_cast<int16_t>(s * 32767.0f);
-        i2sBuf_[2 * i]     = v;
-        i2sBuf_[2 * i + 1] = v;
+    auto out = i2sBuf_.begin();
+    for (const float s : stereoLR) {
+        const float x = synth::dsp::clamp(s * amp, -1.0f, 1.0f);
+        *out++ = static_cast<int16_t>(x * 32767.0f);
     }
 
     size_t bytes_written;
-    ESP_ERROR_CHECK(i2s_channel_write(tx_handle, i2sBuf_.data(), frames * 2 * sizeof(int16_t),
-                                      &bytes_written, portMAX_DELAY));
-}
-
-void Sound::writeStereoInterleaved(const float* stereoLR, const size_t frames) {
-    const float amp = engine::gAudio.masterAmplitude;
-    for (size_t i = 0; i < frames; ++i) {
-        const float l = synth::dsp::clamp(stereoLR[2 * i]     * amp, -1.0f, 1.0f);
-        const float r = synth::dsp::clamp(stereoLR[2 * i + 1] * amp, -1.0f, 1.0f);
-        i2sBuf_[2 * i]     = static_cast<int16_t>(l * 32767.0f);
-        i2sBuf_[2 * i + 1] = static_cast<int16_t>(r * 32767.0f);
-    }
-
-    size_t bytes_written;
-    ESP_ERROR_CHECK(i2s_channel_write(tx_handle, i2sBuf_.data(), frames * 2 * sizeof(int16_t),
+    ESP_ERROR_CHECK(i2s_channel_write(tx_handle, i2sBuf_.data(), i2sBuf_.size() * sizeof(int16_t),
                                       &bytes_written, portMAX_DELAY));
 }

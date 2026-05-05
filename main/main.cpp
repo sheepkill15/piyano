@@ -20,11 +20,8 @@ void handleMidiMessage(const std::array<uint8_t, 4>& data);
 TaskHandle_t soundTaskHandle;
 
 [[noreturn]] void soundTask(void *parameter) {
-    constexpr auto bufferSize = synth::cfg::kAudioRenderBlockSamples;
-    static std::array<float, synth::cfg::kAudioRenderBlockSamples * 2> stereo;
-
     for (;;) {
-        workstation.renderAndWrite(stereo.data(), bufferSize);
+        workstation.renderAndWrite();
     }
 }
 

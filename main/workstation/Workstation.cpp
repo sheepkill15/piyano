@@ -5,9 +5,10 @@
 #include "instruments/Presets.h"
 #include "synth/dsp/WaveTables.h"
 
-void Workstation::renderAndWrite(float* stereoLR, const std::size_t frames) noexcept {
-    synth_.render(stereoLR, frames);
-    sound_.writeStereoInterleaved(stereoLR, frames);
+void Workstation::renderAndWrite() noexcept {
+    auto& stereoLR = sound_.stereoBlock();
+    synth_.render(stereoLR);
+    sound_.writeStereoInterleaved(stereoLR);
 }
 
 void Workstation::registerPreset_(const PatchFactory factory) noexcept {

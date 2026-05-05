@@ -21,7 +21,7 @@ public:
     void update(const float dt) noexcept { synth_.update(dt); }
 
     // Renders interleaved stereo (L,R,...) and writes to I2S.
-    void renderAndWrite(float* stereoLR, std::size_t frames) noexcept;
+    void renderAndWrite() noexcept;
 
     void handleControlChange(uint8_t channel, uint8_t control, uint8_t value) noexcept;
     void handleProgramChange(uint8_t channel, uint8_t program) noexcept;
