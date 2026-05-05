@@ -2,6 +2,7 @@
 #define SOUND_H
 
 #include "driver/i2s_std.h"
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -30,10 +31,8 @@ public:
     float dcFilterState_ = 0.0f;
 
 private:
-    void ensureBuffer_(size_t frames) noexcept;
-
-    int16_t* i2sBuf_ = nullptr;
-    size_t i2sBufFrames_ = 0;
+    static constexpr std::size_t kFrames = static_cast<std::size_t>(synth::cfg::kAudioRenderBlockSamples);
+    std::array<int16_t, kFrames * 2> i2sBuf_{};
 };
 
 #endif

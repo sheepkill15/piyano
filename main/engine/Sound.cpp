@@ -3,7 +3,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 
-#include <cstdlib>
+#include <cassert>
 #include <cstring>
 
 #include "synth/dsp/Approx.h"
@@ -38,23 +38,9 @@ void Sound::begin() {
 
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
 
-    esp_err_t ret = i2s_new_channel(&chan_cfg, &tx_handle, nullptr);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to create I2S channel: %s", esp_err_to_name(ret));
-        return;
-    }
-
-    ret = i2s_channel_init_std_mode(tx_handle, &std_cfg);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize I2S channel in std mode: %s", esp_err_to_name(ret));
-        return;
-    }
-
-    ret = i2s_channel_enable(tx_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to enable I2S channel: %s", esp_err_to_name(ret));
-        return;
-    }
+    ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &tx_handle, nullptr));
+    ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_handle, &std_cfg));
+    ESP_ERROR_CHECK(i2s_channel_enable(tx_handle));
 
     ESP_LOGI(TAG, "Sound system initialized - Sample Rate: %lu Hz", static_cast<unsigned long>(engine::gAudio.sampleRate));
 }
@@ -63,11 +49,6 @@ Sound::~Sound() {
     if (tx_handle) {
         i2s_channel_disable(tx_handle);
         i2s_del_channel(tx_handle);
-    }
-    if (i2sBuf_) {
-        std::free(i2sBuf_);
-        i2sBuf_ = nullptr;
-        i2sBufFrames_ = 0;
     }
 }
 
@@ -83,18 +64,10 @@ void Sound::setAmplitude(float amplitude) {
     ESP_LOGI(TAG, "Master amplitude set to: %.2f", engine::gAudio.masterAmplitude);
 }
 
-void Sound::ensureBuffer_(const size_t frames) noexcept {
-    if (frames <= i2sBufFrames_ && i2sBuf_) return;
-    if (i2sBuf_) std::free(i2sBuf_);
-    i2sBuf_ = static_cast<int16_t*>(std::malloc(frames * 2 * sizeof(int16_t)));
-    i2sBufFrames_ = i2sBuf_ ? frames : 0;
-}
-
 void Sound::write(const float* mono, const size_t frames) {
-    if (!tx_handle || !mono || frames == 0) return;
-
-    ensureBuffer_(frames);
-    if (!i2sBuf_) return;
+    assert(tx_handle);
+    assert(mono);
+    assert(frames == Sound::kFrames);
 
     const float amp = engine::gAudio.masterAmplitude;
     for (size_t i = 0; i < frames; ++i) {
@@ -107,18 +80,14 @@ void Sound::write(const float* mono, const size_t frames) {
     }
 
     size_t bytes_written;
-    const esp_err_t ret = i2s_channel_write(tx_handle, i2sBuf_, frames * 2 * sizeof(int16_t),
-                                      &bytes_written, portMAX_DELAY);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "I2S write failed: %s", esp_err_to_name(ret));
-    }
+    ESP_ERROR_CHECK(i2s_channel_write(tx_handle, i2sBuf_.data(), frames * 2 * sizeof(int16_t),
+                                      &bytes_written, portMAX_DELAY));
 }
 
 void Sound::writeStereoInterleaved(const float* stereoLR, const size_t frames) {
-    if (!tx_handle || !stereoLR || frames == 0) return;
-
-    ensureBuffer_(frames);
-    if (!i2sBuf_) return;
+    assert(tx_handle);
+    assert(stereoLR);
+    assert(frames == Sound::kFrames);
 
     const float amp = engine::gAudio.masterAmplitude;
     for (size_t i = 0; i < frames; ++i) {
@@ -129,9 +98,6 @@ void Sound::writeStereoInterleaved(const float* stereoLR, const size_t frames) {
     }
 
     size_t bytes_written;
-    const esp_err_t ret = i2s_channel_write(tx_handle, i2sBuf_, frames * 2 * sizeof(int16_t),
-                                      &bytes_written, portMAX_DELAY);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "I2S write failed: %s", esp_err_to_name(ret));
-    }
+    ESP_ERROR_CHECK(i2s_channel_write(tx_handle, i2sBuf_.data(), frames * 2 * sizeof(int16_t),
+                                      &bytes_written, portMAX_DELAY));
 }
