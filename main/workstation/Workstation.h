@@ -16,8 +16,8 @@ public:
 
     void begin() noexcept;
 
-    void noteOn(const uint8_t note, const float vel) noexcept { synth_.noteOn(note, vel); }
-    void noteOff(const uint8_t note) noexcept { synth_.noteOff(note); }
+    void noteOn(const uint8_t /*channel*/, const uint8_t note, const float vel) noexcept { synth_.noteOn(note, vel); }
+    void noteOff(const uint8_t /*channel*/, const uint8_t note) noexcept { synth_.noteOff(note); }
     void update(const float dt) noexcept { synth_.update(dt); }
 
     // Renders interleaved stereo (L,R,...) and writes to I2S.

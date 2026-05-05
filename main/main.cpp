@@ -113,12 +113,12 @@ void handleMidiMessage(const std::array<uint8_t, 4>& data) {
 void onMidiNoteOn(const uint8_t channel, const uint8_t pitch, const uint8_t velocity) {
     const float amplitude = static_cast<float>(velocity) / 127.0f;
     if(velocity == 0) {
-        workstation.noteOff(pitch);
+        workstation.noteOff(channel, pitch);
         return;
     }
-    workstation.noteOn(pitch, amplitude);
+    workstation.noteOn(channel, pitch, amplitude);
 }
 
 void onMidiNoteOff(const uint8_t channel, const uint8_t pitch) {
-    workstation.noteOff(pitch);
+    workstation.noteOff(channel, pitch);
 }
