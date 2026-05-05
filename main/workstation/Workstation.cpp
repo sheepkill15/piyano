@@ -1,12 +1,14 @@
 #include "workstation/Workstation.h"
 #include "workstation/Params.h"
 
+#include "engine/AudioContext.h"
 #include "instruments/Presets.h"
+#include "synth/dsp/WaveTables.h"
 
-Workstation::Workstation(SynthEngine& synth, InstrumentManager& instruments, Sound& sound) noexcept
-    : synth_(synth)
-    , instruments_(instruments)
-    , sound_(sound) {}
+void Workstation::renderAndWrite(float* stereoLR, const std::size_t frames) noexcept {
+    synth_.render(stereoLR, frames);
+    sound_.writeStereoInterleaved(stereoLR, frames);
+}
 
 void Workstation::registerPreset_(const PatchFactory factory) noexcept {
     if (!factory) return;
@@ -16,6 +18,11 @@ void Workstation::registerPreset_(const PatchFactory factory) noexcept {
 
 void Workstation::begin() noexcept {
     presetCount_ = 0;
+
+    synth::dsp::initWaveTables();
+    sound_.begin();
+    engine::gAudio.setSampleRate(static_cast<float>(sound_.sampleRate));
+    synth_.init(&instruments_);
 
     // Output stage at unity; synth master gain is the main mix control.
     sound_.setAmplitude(1.0f);
@@ -84,7 +91,7 @@ void Workstation::loadPreset_(const uint8_t presetIndex) noexcept {
     applyAmpEnv_(patch);
 }
 
-void Workstation::applyAmpEnv_(const synth::patch::Patch& patch) const noexcept {
+void Workstation::applyAmpEnv_(const synth::patch::Patch& patch) noexcept {
     if (patch.envCount == 0) return;
     const auto& e = patch.envs[0];
     synth_.setParam(Params::Attack,  e.attack);

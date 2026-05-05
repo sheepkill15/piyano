@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstddef>
 
 #include "synth/Constants.h"
 #include "engine/SynthEngine.h"
@@ -11,9 +12,16 @@
 
 class Workstation {
 public:
-    Workstation(SynthEngine& synth, InstrumentManager& instruments, Sound& sound) noexcept;
+    Workstation() noexcept = default;
 
     void begin() noexcept;
+
+    void noteOn(const uint8_t note, const float vel) noexcept { synth_.noteOn(note, vel); }
+    void noteOff(const uint8_t note) noexcept { synth_.noteOff(note); }
+    void update(const float dt) noexcept { synth_.update(dt); }
+
+    // Renders interleaved stereo (L,R,...) and writes to I2S.
+    void renderAndWrite(float* stereoLR, std::size_t frames) noexcept;
 
     void handleControlChange(uint8_t channel, uint8_t control, uint8_t value) noexcept;
     void handleProgramChange(uint8_t channel, uint8_t program) noexcept;
@@ -30,11 +38,11 @@ private:
     void registerPreset_(PatchFactory factory) noexcept;
     void loadPreset_(uint8_t presetIndex) noexcept;
     void nextPreset_() noexcept;
-    void applyAmpEnv_(const synth::patch::Patch& patch) const noexcept;
+    void applyAmpEnv_(const synth::patch::Patch& patch) noexcept;
 
-    SynthEngine& synth_;
-    InstrumentManager& instruments_;
-    Sound& sound_;
+    SynthEngine synth_{};
+    InstrumentManager instruments_{};
+    Sound sound_{};
 
     static constexpr uint8_t MAX_PRESETS = synth::cfg::kWorkstationMaxPresets;
     std::array<synth::patch::Patch, MAX_PRESETS> presets_{};

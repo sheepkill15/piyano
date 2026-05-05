@@ -3,25 +3,14 @@
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "Midi.h"
-#include "instruments/InstrumentManager.h"
-#include "engine/SynthEngine.h"
-#include "engine/Sound.h"
-#include "engine/AudioContext.h"
 #include "synth/Constants.h"
-#include "synth/dsp/WaveTables.h"
 #include "workstation/Workstation.h"
 #include <array>
-#include <cstddef>
-#include <cmath>
 
-static const char *TAG = "PIYANO";
+static auto TAG = "PIYANO";
 
-// Global instances
 Midi midi;
-SynthEngine synthEngine;
-InstrumentManager manager;
-Sound sound;
-Workstation workstation(synthEngine, manager, sound);
+Workstation workstation;
 
 // MIDI callback functions
 void onMidiNoteOn(uint8_t channel, uint8_t pitch, uint8_t velocity);
@@ -31,12 +20,11 @@ void handleMidiMessage(const std::array<uint8_t, 4>& data);
 TaskHandle_t soundTaskHandle;
 
 [[noreturn]] void soundTask(void *parameter) {
-    constexpr auto bufferSize = static_cast<int>(synth::cfg::kAudioRenderBlockSamples);
+    constexpr auto bufferSize = synth::cfg::kAudioRenderBlockSamples;
     static std::array<float, synth::cfg::kAudioRenderBlockSamples * 2> stereo;
 
     for (;;) {
-        synthEngine.render(stereo.data(), static_cast<uint64_t>(bufferSize));
-        sound.writeStereoInterleaved(stereo.data(), static_cast<size_t>(bufferSize));
+        workstation.renderAndWrite(stereo.data(), bufferSize);
     }
 }
 
@@ -44,7 +32,6 @@ extern "C" [[noreturn]] void app_main()
 {
     ESP_LOGI(TAG, "Piyano - MIDI Piano with I2S Audio");
 
-    // Initialize GPIO
     gpio_config_t io_conf = {};
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_OUTPUT;
@@ -54,10 +41,6 @@ extern "C" [[noreturn]] void app_main()
     gpio_config(&io_conf);
     gpio_set_level(GPIO_NUM_4, 1);
 
-    synth::dsp::initWaveTables();
-    sound.begin();
-    engine::gAudio.setSampleRate(static_cast<float>(sound.sampleRate));
-    synthEngine.init(&manager);
     workstation.begin();
     
     // Initialize MIDI with custom handler
@@ -81,7 +64,7 @@ extern "C" [[noreturn]] void app_main()
         timeval tv_now{};
         gettimeofday(&tv_now, nullptr);
         int64_t time_us = tv_now.tv_sec * 1000000L + static_cast<int64_t>(tv_now.tv_usec);
-        synthEngine.update(static_cast<float>(time_us - lastUpdate) / 1000000.0f);
+        workstation.update(static_cast<float>(time_us - lastUpdate) / 1000000.0f);
         lastUpdate = time_us;
         vTaskDelay(pdMS_TO_TICKS(1));
     }
@@ -130,12 +113,12 @@ void handleMidiMessage(const std::array<uint8_t, 4>& data) {
 void onMidiNoteOn(const uint8_t channel, const uint8_t pitch, const uint8_t velocity) {
     const float amplitude = static_cast<float>(velocity) / 127.0f;
     if(velocity == 0) {
-        synthEngine.noteOff(pitch);
+        workstation.noteOff(pitch);
         return;
     }
-    synthEngine.noteOn(pitch, amplitude);
+    workstation.noteOn(pitch, amplitude);
 }
 
 void onMidiNoteOff(const uint8_t channel, const uint8_t pitch) {
-    synthEngine.noteOff(pitch);
+    workstation.noteOff(pitch);
 }
