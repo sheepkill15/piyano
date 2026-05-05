@@ -1594,8 +1594,4 @@ std::array<std::array<float, kSawTableSize + 1>, kSawTables> gSawTable = { {
     } },
 } };
 
-void initWaveTables() noexcept {
-    // Tables are statically initialised - nothing to do.
-}
-
 } // namespace synth::dsp

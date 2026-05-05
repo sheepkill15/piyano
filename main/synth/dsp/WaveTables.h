@@ -31,8 +31,6 @@ constexpr int kSawTableMask = cfg::kSawTableMask;
 extern std::array<std::array<float, kSawTableSize + 1>, kSawTables> gSawTable;
 extern const std::array<float, kSawTables> gSawTableMaxFreq;
 
-void initWaveTables() noexcept;
-
 // Linearly interpolated sine for phase in [0, 1). Caller must keep phase wrapped.
 inline float sineLU(const float phase01) noexcept {
     const float idxF = phase01 * static_cast<float>(kSineSize);
