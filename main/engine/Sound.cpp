@@ -12,13 +12,11 @@
 static auto TAG = "SOUND";
 
 Sound::Sound()
-    : sampleRate(44100)
-    , masterAmplitude(1.0f)
-    , tx_handle(nullptr)
+    : tx_handle(nullptr)
 {
-    engine::gAudio.setSampleRate(static_cast<float>(sampleRate));
+    const auto sr = engine::gAudio.sampleRate;
     std_cfg = i2s_std_config_t{
-        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(static_cast<uint32_t>(sampleRate)),
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sr),
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
@@ -58,7 +56,7 @@ void Sound::begin() {
         return;
     }
 
-    ESP_LOGI(TAG, "Sound system initialized - Sample Rate: %d Hz", sampleRate);
+    ESP_LOGI(TAG, "Sound system initialized - Sample Rate: %lu Hz", static_cast<unsigned long>(engine::gAudio.sampleRate));
 }
 
 Sound::~Sound() {
@@ -73,16 +71,16 @@ Sound::~Sound() {
     }
 }
 
-void Sound::setSampleRate(const int rate) {
-    sampleRate = rate;
-    engine::gAudio.setSampleRate(static_cast<float>(sampleRate));
-    ESP_LOGI(TAG, "Sample rate set to: %d Hz", rate);
+void Sound::setSampleRate(const uint32_t rate) {
+    engine::gAudio.setSampleRate(rate);
+    std_cfg.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(engine::gAudio.sampleRate);
+    ESP_LOGI(TAG, "Sample rate set to: %lu Hz", static_cast<unsigned long>(engine::gAudio.sampleRate));
 }
 
 void Sound::setAmplitude(float amplitude) {
     amplitude = synth::dsp::clamp(amplitude, 0.0f, 1.0f);
-    masterAmplitude = amplitude;
-    ESP_LOGI(TAG, "Master amplitude set to: %.2f", masterAmplitude);
+    engine::gAudio.setMasterAmplitude(amplitude);
+    ESP_LOGI(TAG, "Master amplitude set to: %.2f", engine::gAudio.masterAmplitude);
 }
 
 void Sound::ensureBuffer_(const size_t frames) noexcept {
@@ -98,7 +96,7 @@ void Sound::write(const float* mono, const size_t frames) {
     ensureBuffer_(frames);
     if (!i2sBuf_) return;
 
-    const float amp = masterAmplitude;
+    const float amp = engine::gAudio.masterAmplitude;
     for (size_t i = 0; i < frames; ++i) {
         float s = mono[i] * amp;
         if (s > 1.0f) s = 1.0f;
@@ -122,7 +120,7 @@ void Sound::writeStereoInterleaved(const float* stereoLR, const size_t frames) {
     ensureBuffer_(frames);
     if (!i2sBuf_) return;
 
-    const float amp = masterAmplitude;
+    const float amp = engine::gAudio.masterAmplitude;
     for (size_t i = 0; i < frames; ++i) {
         const float l = synth::dsp::clamp(stereoLR[2 * i]     * amp, -1.0f, 1.0f);
         const float r = synth::dsp::clamp(stereoLR[2 * i + 1] * amp, -1.0f, 1.0f);

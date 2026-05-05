@@ -20,7 +20,6 @@ void Workstation::begin() noexcept {
     presetCount_ = 0;
 
     sound_.begin();
-    engine::gAudio.setSampleRate(static_cast<float>(sound_.sampleRate));
     synth_.init(&instruments_);
 
     // Output stage at unity; synth master gain is the main mix control.

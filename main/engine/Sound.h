@@ -19,11 +19,8 @@ public:
     void writeStereoInterleaved(const float* stereoLR, size_t frames);
 
     // Configuration
-    void setSampleRate(int rate);
+    void setSampleRate(uint32_t rate);
     void setAmplitude(float amplitude);
-
-    int sampleRate;
-    float masterAmplitude;
 
     // I2S configuration
     i2s_chan_handle_t tx_handle;

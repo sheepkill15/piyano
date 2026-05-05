@@ -19,8 +19,8 @@ struct GlobalMixer {
 
     modules::Smoother1p gainSmoother{};
 
-    void init(const float sampleRate) noexcept {
-        gainSmoother.setTimeConstant(0.020f, sampleRate);
+    void init(const uint32_t sampleRate) noexcept {
+        gainSmoother.setTimeConstant(0.020f, static_cast<float>(sampleRate));
         gainSmoother.reset(0.5f);
         gainSmoother.setTarget(0.5f);
     }

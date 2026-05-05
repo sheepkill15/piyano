@@ -191,7 +191,7 @@ void ModularInstrument::onVoiceStart(const uint8_t v, const VoiceContext& ctx) n
     }
 
     if (patch_.resonator.enabled) {
-        const float sr = engine::gAudio.sampleRate;
+        const float sr = static_cast<float>(engine::gAudio.sampleRate);
         const float f = (ctx.frequency < 20.0f) ? 20.0f : ctx.frequency;
         auto delay = static_cast<std::size_t>(sr / f);
         if (delay < 2) delay = 2;

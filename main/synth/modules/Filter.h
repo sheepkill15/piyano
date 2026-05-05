@@ -49,7 +49,7 @@ struct Svf {
     void reset() noexcept { ic1eq = 0.0f; ic2eq = 0.0f; }
 
     void set(float cutoffHz, float resonance) noexcept {
-        const auto sampleRate = engine::gAudio.sampleRate;
+        const float sampleRate = static_cast<float>(engine::gAudio.sampleRate);
         cutoffHz = dsp::clamp(cutoffHz, 5.0f, sampleRate * 0.45f);
         resonance = dsp::clamp(resonance, 0.0f, 1.0f);
 
