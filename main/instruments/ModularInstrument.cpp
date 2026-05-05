@@ -110,7 +110,7 @@ void ModularInstrument::setPatch(const synth::patch::Patch& patch) noexcept {
 
         for (uint8_t i = 0; i < MAX_LFOS; ++i) {
             auto& l = s.lfos[i];
-            l.wave = toLfoWave(patch_.lfos[i].shape);
+            l.setWave(toLfoWave(patch_.lfos[i].shape));
             l.rateHz = patch_.lfos[i].rateHz + patch_.lfos[i].perVoiceRateSpread * static_cast<float>(v);
             float ph = patch_.lfos[i].perVoicePhase * static_cast<float>(v);
             ph -= floorf(ph);
@@ -131,7 +131,7 @@ void ModularInstrument::setPatch(const synth::patch::Patch& patch) noexcept {
     }
 }
 
-void ModularInstrument::resetVoice_(uint8_t v) noexcept {
+void ModularInstrument::resetVoice_(const uint8_t v) noexcept {
     VoiceState& s = voices_[v];
     s.active = false;
     s.freq = 0.0f;
@@ -141,9 +141,6 @@ void ModularInstrument::resetVoice_(uint8_t v) noexcept {
     s.pan = 0.0f;
     s.oscBank.reset();
     for (auto& e : s.modEnvs) e.reset();
-    for (auto& l : s.lfos) {
-        (void)l;
-    }
     s.filterBank.reset();
     s.resoIdx = 0;
     s.resoLp = 0.0f;
@@ -191,7 +188,7 @@ void ModularInstrument::onVoiceStart(const uint8_t v, const VoiceContext& ctx) n
     }
 
     if (patch_.resonator.enabled) {
-        const float sr = static_cast<float>(engine::gAudio.sampleRate);
+        const auto sr = static_cast<float>(engine::gAudio.sampleRate);
         const float f = (ctx.frequency < 20.0f) ? 20.0f : ctx.frequency;
         auto delay = static_cast<std::size_t>(sr / f);
         if (delay < 2) delay = 2;
@@ -230,7 +227,7 @@ void ModularInstrument::renderAddVoice(const uint8_t v, float* outMono, const ui
     std::array<float, MAX_ENVS> envLevels{};
 
     bool vibPitch = false;
-    for (uint8_t oi = 0; oi < patch_.oscCount && oi < MAX_OSCS; ++oi) {
+    for (uint8_t oi = 0; oi < patch_.oscCount; ++oi) {
         const auto& od = patch_.oscs[oi];
         if (od.vibratoLfoIndex >= 0
             && od.vibratoLfoIndex < patch_.lfoCount
@@ -244,10 +241,10 @@ void ModularInstrument::renderAddVoice(const uint8_t v, float* outMono, const ui
     uint64_t batchTimer = 0;
 
     for (uint64_t i = 0; i < numSamples; ++i) {
-        for (uint8_t li = 0; li < patch_.lfoCount && li < MAX_LFOS; ++li) {
+        for (uint8_t li = 0; li < patch_.lfoCount; ++li) {
             lfoBuf[li] = s.lfos[li].tick();
         }
-        for (uint8_t ei = 1; ei < patch_.envCount && ei < MAX_ENVS; ++ei) {
+        for (uint8_t ei = 1; ei < patch_.envCount; ++ei) {
             s.modEnvs[ei].tick(invSr);
             envLevels[ei] = s.modEnvs[ei].level;
         }

@@ -36,7 +36,7 @@ struct Oscillator {
     float pw = 0.5f;      // 0..1 (pulse width)
     int sawTblIdx = 0;
     OscWave wave = OscWave::Sine;
-    decltype(sampleOscWave<OscWave::Sine>)* oscWaveFn = sampleOscWave<OscWave::Sine>;
+    float (*oscWaveFn)(float phase01, int sawTblIdx, float pw) noexcept = sampleOscWave<OscWave::Sine>;
 
     void setWave(const OscWave w) noexcept {
         wave = w;

@@ -1,14 +1,9 @@
 #pragma once
 
 #include <cstdint>
-#include <cmath>
 #include "AudioContext.h"
 #include "synth/dsp/Approx.h"
 #include "synth/dsp/Util.h"
-
-namespace {
-    constexpr auto PI = static_cast<float>(M_PI);
-}
 
 namespace synth::modules {
 
@@ -24,7 +19,7 @@ struct OnePoleLP {
             return;
         }
         const float x = cutoffHz / sampleRate;
-        const float clamped = (x > 0.49f) ? 0.49f : x;
+        const float clamped = std::max(x, 0.49f);
         a = clamped;
     }
 
@@ -49,11 +44,11 @@ struct Svf {
     void reset() noexcept { ic1eq = 0.0f; ic2eq = 0.0f; }
 
     void set(float cutoffHz, float resonance) noexcept {
-        const float sampleRate = static_cast<float>(engine::gAudio.sampleRate);
+        const auto sampleRate = static_cast<float>(engine::gAudio.sampleRate);
         cutoffHz = dsp::clamp(cutoffHz, 5.0f, sampleRate * 0.45f);
         resonance = dsp::clamp(resonance, 0.0f, 1.0f);
 
-        const float w = PI * (cutoffHz / sampleRate);
+        const float w = dsp::PI * (cutoffHz / sampleRate);
         g = dsp::tanPrewarpFast(w);
         // Map 0..1 to k (damping): k=2/Q, Q ~ 0.5..12
         const float q = 0.5f + resonance * (12.0f - 0.5f);

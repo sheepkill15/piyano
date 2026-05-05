@@ -85,32 +85,19 @@ bool SynthEngine::setParam(const uint16_t paramId, const float value) noexcept {
 }
 
 void SynthEngine::render(float* stereoLR, const uint64_t nFrames) noexcept {
-    std::memset(stereoLR, 0, static_cast<size_t>(nFrames) * 2 * sizeof(float));
+    std::memset(stereoLR, 0, nFrames * 2 * sizeof(float));
     if (!instruments_) return;
 
     const float dtPerSample = engine::gAudio.invSampleRate;
 
-    static std::array<float, kBlockSize> voiceTmp;
-    static std::array<float, kBlockSize> envBuf;
-
     uint64_t offset = 0;
     while (offset < nFrames) {
-        const uint64_t block = (nFrames - offset > kBlockSize) ? kBlockSize : (nFrames - offset);
+        const uint64_t block = std::min(kBlockSize, nFrames - offset);
 
         uint8_t v = 0;
         for (auto& env : ampEnv_) {
             if (!env.isActive()) { ++v; continue; }
-
-            // Per-sample envelope curve for the block.
-            for (uint64_t i = 0; i < block; ++i) {
-                env.tick(dtPerSample);
-                envBuf[i] = env.level;
-            }
-            if (!env.isActive()) {
-                // Quick fade-out to zero (silence the tail to avoid clicks)
-            }
-
-            std::memset(voiceTmp.data(), 0, static_cast<size_t>(block) * sizeof(float));
+            std::array<float, kBlockSize> voiceTmp{};
             instruments_->renderAddVoice(v, voiceTmp.data(), block);
 
             // Velocity-aware gain (a bit of velocity sensitivity baked into the engine).
@@ -119,15 +106,16 @@ void SynthEngine::render(float* stereoLR, const uint64_t nFrames) noexcept {
 
             // Equal-power pan
             const float pan = synth::dsp::clamp(instruments_->voicePan(v), -1.0f, 1.0f);
-            const float panAng = (pan + 1.0f) * 0.25f * PI; // 0..pi/2
+            const float panAng = (pan + 1.0f) * 0.25f * synth::dsp::PI; // 0..pi/2
             const float panL = synth::dsp::sineLURad(panAng);
-            const float panR = synth::dsp::sineLURad((PI / 2.0f) - panAng);
+            const float panR = synth::dsp::sineLURad((synth::dsp::PI / 2.0f) - panAng);
 
             float* dst = stereoLR + offset * 2;
             const float gL = panL * velGain * kVoiceGain;
             const float gR = panR * velGain * kVoiceGain;
             for (uint64_t i = 0; i < block; ++i) {
-                const float s = voiceTmp[i] * envBuf[i];
+                env.tick(dtPerSample);
+                const float s = voiceTmp[i] * env.level;
                 dst[2 * i]     += s * gL;
                 dst[2 * i + 1] += s * gR;
             }

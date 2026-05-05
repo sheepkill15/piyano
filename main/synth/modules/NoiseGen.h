@@ -9,11 +9,11 @@ struct NoiseGen {
     WhiteNoise white{};
     PinkishNoise pink{};
 
-    float tick(const synth::patch::NoiseDef& nd) noexcept {
-        if (nd.shape == synth::patch::NoiseShape::White) {
+    float tick(const patch::NoiseDef& nd) noexcept {
+        if (nd.shape == patch::NoiseShape::White) {
             return white.tick() * nd.level;
         }
-        if (nd.shape == synth::patch::NoiseShape::Pinkish) {
+        if (nd.shape == patch::NoiseShape::Pinkish) {
             pink.color = nd.color;
             return pink.tick() * nd.level;
         }

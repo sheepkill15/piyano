@@ -10,9 +10,9 @@
 namespace synth::modules {
 
 struct FilterBank {
-    static constexpr uint8_t MAX_ENVS = synth::patch::MAX_ENVS;
-    static constexpr uint8_t MAX_LFOS = synth::patch::MAX_LFOS;
-    static constexpr uint8_t MAX_FILTERS = synth::patch::MAX_FILTERS;
+    static constexpr uint8_t MAX_ENVS = patch::MAX_ENVS;
+    static constexpr uint8_t MAX_LFOS = patch::MAX_LFOS;
+    static constexpr uint8_t MAX_FILTERS = patch::MAX_FILTERS;
 
     std::array<Svf, MAX_FILTERS> filters{};
 
@@ -20,7 +20,7 @@ struct FilterBank {
         for (auto& f : filters) f.reset();
     }
 
-    void bakePatch(const synth::patch::Patch& patch) noexcept {
+    void bakePatch(const patch::Patch& patch) noexcept {
         for (uint8_t i = 0; i < MAX_FILTERS; ++i) {
             auto& f = filters[i];
             f.reset();
@@ -29,7 +29,7 @@ struct FilterBank {
         }
     }
 
-    void noteOn(const synth::patch::Patch& patch, const float vel) noexcept {
+    void noteOn(const patch::Patch& patch, const float vel) noexcept {
         for (uint8_t i = 0; i < patch.filterCount && i < MAX_FILTERS; ++i) {
             auto& f = filters[i];
             f.reset();
@@ -40,11 +40,11 @@ struct FilterBank {
         }
     }
 
-    void updateCutoffs(const synth::patch::Patch& patch,
+    void updateCutoffs(const patch::Patch& patch,
                        const float vel,
                        const std::array<float, MAX_LFOS>& lfoBuf,
                        const std::array<float, MAX_ENVS>& envLevels) noexcept {
-        for (uint8_t fi = 0; fi < patch.filterCount && fi < MAX_FILTERS; ++fi) {
+        for (uint8_t fi = 0; fi < patch.filterCount; ++fi) {
             const auto& fd = patch.filters[fi];
 
             float envLvl = 0.0f;
@@ -54,7 +54,7 @@ struct FilterBank {
 
             float cut = fd.cutoffHz + (fd.cutoffPeakHz - fd.cutoffHz) * envLvl;
             cut += fd.velToCutoffHz * vel;
-            if (fd.lfoIndex >= 0 && fd.lfoIndex < MAX_LFOS) {
+            if (fd.lfoIndex >= 0) {
                 cut += lfoBuf[static_cast<uint8_t>(fd.lfoIndex)] * fd.lfoCutoffHz;
             }
             if (cut < 20.0f) cut = 20.0f;
@@ -63,16 +63,16 @@ struct FilterBank {
         }
     }
 
-    float process(const synth::patch::Patch& patch, float sig) noexcept {
-        for (uint8_t fi = 0; fi < patch.filterCount && fi < MAX_FILTERS; ++fi) {
+    float process(const patch::Patch& patch, float sig) noexcept {
+        for (uint8_t fi = 0; fi < patch.filterCount; ++fi) {
             sig = filters[fi].tick(sig);
         }
         return sig;
     }
 
 private:
-    static SvfMode toSvfMode_(const synth::patch::FilterMode m) noexcept {
-        using P = synth::patch::FilterMode;
+    static SvfMode toSvfMode_(const patch::FilterMode m) noexcept {
+        using P = patch::FilterMode;
         using S = SvfMode;
         switch (m) {
             case P::LowPass:  return S::LowPass;

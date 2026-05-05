@@ -13,9 +13,9 @@
 namespace synth::modules {
 
 struct FmOscBank {
-    static constexpr uint8_t MAX_OSCS = synth::patch::MAX_OSCS;
-    static constexpr uint8_t MAX_ENVS = synth::patch::MAX_ENVS;
-    static constexpr uint8_t MAX_LFOS = synth::patch::MAX_LFOS;
+    static constexpr uint8_t MAX_OSCS = patch::MAX_OSCS;
+    static constexpr uint8_t MAX_ENVS = patch::MAX_ENVS;
+    static constexpr uint8_t MAX_LFOS = patch::MAX_LFOS;
 
     std::array<Oscillator, MAX_OSCS> oscs{};
     std::array<float, MAX_OSCS> oscFb{};
@@ -34,7 +34,7 @@ struct FmOscBank {
         }
     }
 
-    void noteOn(const synth::patch::Patch& patch, const uint8_t voiceIndex, const float baseHz) noexcept {
+    void noteOn(const patch::Patch& patch, const uint8_t voiceIndex, const float baseHz) noexcept {
         (void)voiceIndex;
         for (uint8_t i = 0; i < patch.oscCount && i < MAX_OSCS; ++i) {
             oscs[i].reset((i == 1) ? 0.5f : 0.0f);
@@ -50,10 +50,10 @@ struct FmOscBank {
         }
     }
 
-    void recomputePitch(const synth::patch::Patch& patch,
+    void recomputePitch(const patch::Patch& patch,
                         const float baseHz,
                         const std::array<float, MAX_LFOS>& lfoBuf) noexcept {
-        for (uint8_t i = 0; i < patch.oscCount && i < MAX_OSCS; ++i) {
+        for (uint8_t i = 0; i < patch.oscCount; ++i) {
             const auto& od = patch.oscs[i];
             const float ratio = od.pitchRatio * (od.isFmModulator ? patch.fmRatioScale : 1.0f);
             float vibOctaves = 0.0f;
@@ -70,10 +70,10 @@ struct FmOscBank {
         }
     }
 
-    float tickMix(const synth::patch::Patch& patch,
+    float tickMix(const patch::Patch& patch,
                   const std::array<float, MAX_ENVS>& envLevels,
                   const float vel) noexcept {
-        constexpr float kRadiansToPhase01 = synth::cfg::kRadiansToPhase01;
+        constexpr float kRadiansToPhase01 = cfg::kRadiansToPhase01;
         float mix = 0.0f;
 
         for (uint8_t oi = 0; oi < patch.oscCount && oi < MAX_OSCS; ++oi) {
@@ -108,8 +108,8 @@ struct FmOscBank {
     }
 
 private:
-    static OscWave toOscWave_(const synth::patch::OscShape s) noexcept {
-        using P = synth::patch::OscShape;
+    static OscWave toOscWave_(const patch::OscShape s) noexcept {
+        using P = patch::OscShape;
         using W = OscWave;
         switch (s) {
             case P::Sine:     return W::Sine;

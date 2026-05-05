@@ -13,4 +13,5 @@ inline float midiNoteToHz(const uint8_t note) noexcept {
     return 440.0f * powf(2.0f, (static_cast<float>(note) - 69.0f) / 12.0f);
 }
 
+constexpr auto PI = static_cast<float>(M_PI);
 } // namespace synth::dsp

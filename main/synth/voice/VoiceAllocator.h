@@ -102,7 +102,7 @@ private:
 
     uint8_t allocateVoice_() noexcept {
         for (uint8_t step = 0; step < maxVoices_; ++step) {
-            const uint8_t i = static_cast<uint8_t>((nextVoiceIndex_ + step) % maxVoices_);
+            const auto i = static_cast<uint8_t>((nextVoiceIndex_ + step) % maxVoices_);
             if (!voices_[i].gate) {
                 nextVoiceIndex_ = static_cast<uint8_t>((i + 1) % maxVoices_);
                 return i;

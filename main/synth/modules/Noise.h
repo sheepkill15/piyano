@@ -23,7 +23,7 @@ struct PinkishNoise {
 
     float tick() noexcept {
         const float w = white.tick();
-        const float c = (color < 0.0f) ? 0.0f : (color > 1.0f ? 1.0f : color);
+        const float c = dsp::clamp(color, 0.0f, 1.0f);
         z += (w - z) * c;
         return z;
     }
