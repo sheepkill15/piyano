@@ -1,0 +1,318 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{csquotes}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue,
+  pdftitle={Piyano --- Project Documentation},
+}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!8},
+}
+
+\title{Piyano\\[0.35em]
+  \large Embedded MIDI Workstation with Software Synthesis\\
+  \normalsize Project Documentation}
+\author{%
+  \textit{Author: } \texttt{Simon Áron}\\
+  }
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Piyano is firmware for Espressif ESP32-class devices that acts as a USB MIDI host and turns incoming note and controller data into stereo audio via I\textsuperscript{2}S. The signal path combines a polyphonic software synthesizer (subtractive and FM patches, optional resonator and transient exciter) with a drum-kit mode, preset management, and real-time parameter control mapped from common MIDI continuous controllers. The project aims to push the boundaries of how cheaply such a system can be realized.
+\end{abstract}
+\pagebreak
+\tableofcontents
+\newpage
+
+%==============================================================================
+\section{Project Management Plan}
+%==============================================================================
+
+\subsection{Project goal and scope}
+The product is a self-contained musical instrument: connect a USB MIDI controller, select presets, play notes, and hear the result on headphones or speakers through a digital--analog converter driven by I\textsuperscript{2}S. Scope includes USB MIDI reception, voice allocation and rendering, preset switching, sustain-pedal semantics, pitch bend, and a documented modular patch format for extending sounds without rewriting the engine.
+
+\subsection{Technology choices}
+\begin{itemize}[noitemsep]
+  \item \textbf{Platform:} ESP32 (ESP-IDF toolchain, CMake \texttt{project(piyano)}).
+  \item \textbf{Language:} C++17 (components registered via \texttt{idf\_component\_register}).
+  \item \textbf{RTOS:} FreeRTOS tasks for audio (high priority, pinned core) vs.\ MIDI polling on the main loop.
+  \item \textbf{USB MIDI:} Host stack integration based on \texttt{esp32-usb-host-midi-library}.
+  \item \textbf{Audio output:} I\textsuperscript{2}S standard mode, 16-bit stereo, Philips slot.
+  \item \textbf{Version control:} Git; remote on GitHub, with just a master branch.
+  \item \textbf{Project board:} -
+\end{itemize}
+
+\subsection{Work breakdown (high level)}
+\begin{enumerate}[noitemsep]
+  \item Repository layout, \texttt{.gitignore}, CMakeLists build configuration.
+  \item USB MIDI device attach/detach and message parsing to internal callback.
+  \item I\textsuperscript{2}S proof tone, then block-based synth render.
+  \item Patch/instrument abstraction (\texttt{Patch}, \texttt{ModularInstrument}, \texttt{DrumKitInstrument}).
+  \item Preset library and workstation MIDI mapping.
+  \item Code review milestone; stabilize presets and CC maps for demo controllers.
+  \item Final documentation (this PDF) and live demonstration.
+\end{enumerate}
+
+\subsection{Risks and mitigations}
+\begin{longtable}{p{0.28\textwidth}p{0.62\textwidth}}
+\toprule
+\textbf{Risk} & \textbf{Mitigation} \\
+\midrule
+\endhead
+USB class-driver or cable/controller incompatibility &
+Test with multiple MIDI controllers; keep UART logging (\texttt{ESP\_LOGI}) for message tracing. \\
+CPU overload / audio dropouts &
+Fixed render block size (\texttt{kAudioRenderBlockSamples}), \texttt{-O3 -ffast-math} on component, minimize allocations on audio thread. Reduce sample rate from 44.1k to 22k.\\
+Real-time jitter &
+Dedicated audio task at priority 18, pinned to core 1; MIDI on separate loop with short delay. \\
+Scope creep &
+Commit to preset-driven extension (new factories in \texttt{Presets.h}) instead of open-ended UI. \\
+\bottomrule
+\end{longtable}
+\pagebreak
+\subsection{Repository layout (actual)}
+\begin{lstlisting}
+piyano/
+  CMakeLists.txt          # ESP-IDF root
+  main/
+    CMakeLists.txt        # idf_component_register(...)
+    main.cpp              # app_main, MIDI dispatch, tasks
+    Midi.cpp / Midi.h
+    UsbMidi.cpp / UsbMidi.h
+    engine/               # SynthEngine, Sound (I2S), AudioContext
+    workstation/          # Workstation, Params
+    instruments/          # Patch, presets, Modular/Drum instruments
+    synth/                # DSP modules, voice allocator, mixer
+  docs/
+    project-documentation.tex
+  .gitignore
+\end{lstlisting}
+
+%==============================================================================
+\section{Requirement Analysis}
+%==============================================================================
+
+\subsection{Problem statement}
+Musicians and students need a portable, low-cost way to practice piano or synth parts with physical MIDI keyboards without a PC. A microcontroller that speaks USB MIDI and produces audio directly reduces setup complexity and latency compared to USB-to-host software synth chains.
+
+\subsection{Constraints}
+\begin{itemize}[noitemsep]
+  \item \textbf{Hardware:} ESP32 with USB host capability, I\textsuperscript{2}S DAC, appropriate power and analog front-end.
+  \item \textbf{Software:} ESP-IDF version compatible with the codebase; open-source third-party USB MIDI component.
+  \item \textbf{Real time:} continuous audio output; MIDI processing must not starve the render task.
+  \item \textbf{Memory:} bounded per-voice state (e.g.\ resonator ring \texttt{kResonatorRingSamples}), no unbounded heap growth on the audio path.
+\end{itemize}
+
+%==============================================================================
+\section{Requirement Specification}
+%==============================================================================
+
+\subsection{Functional requirements}
+\begin{longtable}{p{0.18\textwidth}p{0.72\textwidth}}
+\toprule
+\textbf{ID} & \textbf{Description} \\
+\midrule
+\endhead
+FR-MIDI-01 &
+Receive USB MIDI channel voice messages: Note On (velocity 0 treated as off), Note Off, Control Change, Program Change, Pitch Bend. \\
+FR-MIDI-02 &
+Note On shall trigger \texttt{SynthEngine::noteOn}; Note Off shall release voices subject to sustain pedal state (CC~64). \\
+FR-MIDI-03 &
+Program Change shall load preset index \texttt{program mod presetCount} (\texttt{Workstation::handleProgramChange}). \\
+FR-MIDI-04 &
+Pitch bend shall normalize 14-bit MIDI bend to $[-1,1]$ and forward to \texttt{Params::PitchBend}. \\
+FR-MIDI-05 &
+Control Change mapping shall include volume (7), expression (11), modulation (1), brightness (74), resonance (71), attack/decay/sustain (73/75/72), release alias (91), and workstation-specific macros (noise, drive, FM, vibrato, filter LFO amount) as implemented in \texttt{Workstation::handleControlChange}. \\
+FR-AUDIO-01 &
+Render floating-point stereo interleaved audio in blocks of \texttt{kAudioRenderBlockSamples} frames, convert to \texttt{int16\_t}, write to I\textsuperscript{2}S. \\
+FR-AUDIO-02 &
+Default sample rate is \texttt{AudioContext::kDefaultSampleRate} (22\,050\,Hz) unless changed via \texttt{Sound::setSampleRate} (must remain consistent with engine \texttt{invSampleRate}). \\
+FR-SYN-01 &
+Support modular synth patches: up to \texttt{kPatchMaxOscs} oscillators, FM wiring, multi-envelope, LFOs, serial SVF filters, noise, waveshaping drive, optional resonator and exciter (\texttt{Patch.h}, \texttt{ModularInstrument}). \\
+FR-SYN-02 &
+Support drum-kit patches: note$\rightarrow$pad map with kick/snare/hat bodies (\texttt{DrumKitInstrument}). \\
+FR-SYN-03 &
+Polyphony up to \texttt{kPatchMaxVoices} with configurable \texttt{SameNoteMode} (\texttt{VoiceAllocator}). \\
+FR-WS-01 &
+Maintain a table of at most \texttt{kWorkstationMaxPresets} presets registered at startup (\texttt{Workstation::begin}). \\
+FR-WS-02 &
+Provide ``next preset'' via CC~112 value 127 or CC~0 button-style mapping (see \texttt{Workstation.cpp}). \\
+\bottomrule
+\end{longtable}
+
+\subsection{Non-functional requirements}
+\begin{longtable}{p{0.18\textwidth}p{0.72\textwidth}}
+\toprule
+\textbf{ID} & \textbf{Description} \\
+\midrule
+\endhead
+NFR-PERF-01 &
+Audio synthesis runs in a dedicated FreeRTOS task at higher priority than the main MIDI loop (\texttt{xTaskCreatePinnedToCore} priority~18). \\
+NFR-MAINT-01 &
+Preset definitions are data-driven (\texttt{synth::patch::Patch}) and added by factory functions in \texttt{Presets.h} plus one registration line. \\
+NFR-PORT-01 &
+Pin assignments and buffer sizes are centralized in \texttt{synth/Constants.h}. \\
+NFR-LIC-01 &
+Third-party USB MIDI code retains SPDX/copyright header in \texttt{UsbMidi.h}. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Use cases (summary)}
+\begin{longtable}{p{0.22\textwidth}p{0.68\textwidth}}
+\toprule
+\textbf{Use case} & \textbf{Main success scenario} \\
+\midrule
+\endhead
+UC-Play notes &
+User connects USB MIDI keyboard; device enumerates; user plays keys; workstation allocates voices; audio is heard within expected latency. \\
+UC-Change preset &
+User sends Program Change or uses mapped ``next preset'' CC; \texttt{InstrumentManager::loadPatch} switches modular vs.\ drum kit; amplitude envelope parameters sync from patch env~0. \\
+UC-Sustain &
+User holds sustain (CC~64 $\geq 64$); releasing keys keeps sounding notes; sustain off releases held notes that are not physically down. \\
+UC-Expressive &
+User moves pitch wheel or modulation; \texttt{SynthEngine::setParam} and instrument \texttt{setParam} adjust tuning and timbre macros. \\
+UC-Drum kit &
+User selects drum preset; MIDI notes mapped in \texttt{DrumKitDef} trigger percussive voices with per-pad pan and velocity scale. \\
+\bottomrule
+\end{longtable}
+
+%==============================================================================
+\section{Detailed Design}
+%==============================================================================
+
+\subsection{Architectural overview}
+The firmware follows a layered structure:
+\begin{enumerate}[noitemsep]
+  \item \textbf{Hardware abstraction:} \texttt{Sound} (I\textsuperscript{2}S driver), \texttt{UsbMidi} (USB host, transfers, queues).
+  \item \textbf{Scheduling:} \texttt{app\_main} initializes \texttt{Workstation}, starts \texttt{Midi}, creates \texttt{soundTask} for \texttt{renderAndWrite}.
+  \item \textbf{Application:} \texttt{Workstation} translates MIDI to \texttt{SynthEngine} parameters and preset loads.
+  \item \textbf{Engine:} \texttt{SynthEngine} owns voice allocation, per-voice amplitude ADSR, summing/mixer, and calls into \texttt{InstrumentManager}.
+  \item \textbf{Instruments:} \texttt{ModularInstrument} (graph per voice) and \texttt{DrumKitInstrument} (percussion bodies).
+  \item \textbf{DSP library:} oscillators (\texttt{FmOscBank}, wavetables), \texttt{FilterBank}, \texttt{Lfo}, \texttt{NoiseGen}, exciter/resonator modules, \texttt{GlobalMixer}.
+\end{enumerate}
+
+\subsection{Concurrency model}
+\begin{itemize}[noitemsep]
+  \item \textbf{Core / task:} \texttt{soundTask} loops \texttt{workstation.renderAndWrite()} (infinite loop) on core~1.
+  \item \textbf{Main loop:} \texttt{midi.update()}, \texttt{workstation.update(dt)}, \texttt{vTaskDelay(1\,ms)} --- suitable for USB polling and non-audio periodic work.
+  \item \textbf{Shared state:} MIDI callbacks invoke \texttt{Workstation} methods that mutate \texttt{SynthEngine} and instruments; ESP32 memory model requires care; the design keeps mutation lightweight and avoids heap allocation in callbacks.
+\end{itemize}
+
+\subsection{Data flow (audio block)}
+\begin{enumerate}[noitemsep]
+  \item \texttt{SynthEngine::render} zeros stereo buffer, for each active voice calls \texttt{InstrumentManager::renderAddVoice} into a mono scratch buffer.
+  \item Per-voice ADSR scales samples; velocity-dependent gain and equal-power pan applied; accumulation into interleaved L/R.
+  \item \texttt{GlobalMixer} applies master gain/limiting (constants \texttt{kMixerLimiterKnee}, \texttt{kMixerLimiterCeil}).
+  \item \texttt{Sound::writeStereoInterleaved} clamps, scales by \texttt{masterAmplitude}, converts to \texttt{int16\_t}, \texttt{i2s\_channel\_write}.
+\end{enumerate}
+
+\subsection{Patch and preset model}
+\texttt{synth::patch::Patch} aggregates:
+\begin{itemize}[noitemsep]
+  \item \texttt{PatchKind::Synth} vs.\ \texttt{PatchKind::DrumKit}.
+  \item Oscillator definitions with FM links (\texttt{fmFrom}, \texttt{fmIndex}, \texttt{modEnvIndex}, \texttt{vibratoLfoIndex}).
+  \item Parallel envelopes, LFOs, serial filters, noise, drive, resonator, exciter, drum map.
+  \item Voice policy: \texttt{maxVoices}, \texttt{sameNoteMode}.
+\end{itemize}
+\texttt{InstrumentManager::loadPatch} selects implementation without virtual calls on the inner render path by enum dispatch (\texttt{ActiveKind}).
+
+\subsection{Key compile-time configuration}
+Selected literals from \texttt{synth/Constants.h}:
+\begin{lstlisting}
+kAudioRenderBlockSamples = 256
+kPatchMaxVoices = 8
+kPatchMaxOscs = 4
+kWorkstationMaxPresets = 16
+Default sample rate in AudioContext = 22000 Hz
+\end{lstlisting}
+
+%==============================================================================
+\section{Test Management}
+%==============================================================================
+
+\subsection{Test strategy}
+There is no separate automated test binary in the repository; validation is integration-oriented on hardware. Recommended flow:
+
+\subsection{Test cases (traceability)}
+\begin{longtable}{p{0.12\textwidth}p{0.35\textwidth}p{0.41\textwidth}}
+\toprule
+\textbf{ID} & \textbf{Procedure} & \textbf{Expected} \\
+\midrule
+\endhead
+TC-MIDI-01 &
+Connect controller; send single Note On/Off middle C. &
+One voice; clean attack/release; no stuck note. \\
+TC-MIDI-02 &
+Hold sustain; release keys; release sustain. &
+Notes sustain then all eligible notes stop. \\
+TC-MIDI-03 &
+Bend pitch wheel extremes. &
+Audible pitch change; no crashes; parameter clamped. \\
+TC-PRESET-01 &
+Cycle Program Change through all presets. &
+Each load without noise burst beyond normal transients; drum kits respond only on mapped notes. \\
+TC-LOAD-01 &
+Rapid chords ($>$8 notes) on low max-voice patch. &
+Stealing/allocator behavior stable; no heap errors in log. \\
+TC-AUDIO-01 &
+30\,min continuous arpeggio. &
+No sustained crackle attributable to underrun; device thermal behavior acceptable. \\
+TC-CC-01 &
+Exercise volume, expression, filter CCs. &
+Audible level/timbre changes per \texttt{Workstation::handleControlChange}. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Regression and release checklist}
+Before demo/submission: clean rebuild, flash, verify USB MIDI with the same controller used in rehearsal, back up \texttt{sdkconfig} if non-default, confirm instructor access to repo and board, export PDF from this \texttt{.tex} source.
+
+%==============================================================================
+\section{Conclusions --- Summary}
+%==============================================================================
+
+Piyano delivers an embedded workstation: USB MIDI input, modular software synthesis with FM and subtractive colors, drum mode, and I\textsuperscript{2}S output, structured for maintainability via \texttt{Patch}-driven presets and a dedicated audio task. Strengths include clear separation between \texttt{Workstation} (musical policy), \texttt{SynthEngine} (polyphony and mixing), and instruments (DSP detail), plus centralized constants for porting.
+
+Future work could add: persistent user settings in NVS, USB device mode or BLE MIDI, finer-grained parameter MIDI learn, unit tests for \texttt{VoiceAllocator} and DSP helpers on host GCC, anti-aliased oscillator improvements, and dynamic sample-rate switching coordinated across \texttt{Sound} and \texttt{GlobalMixer::init}.
+
+\appendix
+\section{Build and flash (reference)}
+From ESP-IDF environment:
+\begin{lstlisting}
+idf.py set-target esp32s3   # or appropriate chip
+idf.py build
+idf.py -p <PORT> flash monitor
+\end{lstlisting}
+
+\section{References and third-party components}
+\begin{itemize}[noitemsep]
+  \item Espressif ESP-IDF documentation (\url{https://docs.espressif.com/projects/esp-idf/en/latest/}).
+  \item USB MIDI host library credited in \texttt{UsbMidi.h}.
+  \item Course texts (Sommerville, Pressman \& Maxim, Runeson, Summers, Martin, Freeman et al.) informed requirements and review practices.
+\end{itemize}
+
+\end{document}
